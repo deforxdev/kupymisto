@@ -119,3 +119,13 @@ export function playPawnMove(steps: number) {
     oscillator.stop(time + 0.1)
   }
 }
+
+export async function playAssetSound(name: string, fallback?: () => void) {
+  try {
+    const audio = new Audio(`/sounds/${name}`)
+    audio.volume = 0.55
+    await audio.play()
+  } catch {
+    fallback?.()
+  }
+}

@@ -17,7 +17,9 @@ export default function GameScreen({ room, user, onExit }: Props) {
   const [turn,setTurn] = useState(0)
   const [selectedCell,setSelectedCell] = useState(0)
   const [liveRoom,setLiveRoom] = useState(room)
-  const [chanceEvent,setChanceEvent] = useState<ChanceEvent|null>(null)
+  const [chanceEvent,setChanceEvent] = useState<ChanceEvent|null>(room.currentChance||null)
+  const [drawNonce,setDrawNonce] = useState(room.currentChance?.nonce||0)
+  const [skippedTurns,setSkippedTurns] = useState<Record<string,number>>({})
   const [balance,setBalance] = useState(1500)
   const [cardOpen,setCardOpen] = useState(false)
   const [phase,setPhase] = useState<'roll'|'moving'|'decision'>('roll')
@@ -26,7 +28,7 @@ export default function GameScreen({ room, user, onExit }: Props) {
   const cells = useMemo(() => makeCells(liveRoom.boardSize),[liveRoom.boardSize])
 
   useEffect(() => {
-    const timer=window.setInterval(()=>api.getRoom(room.code).then(({room})=>setLiveRoom(room)).catch(()=>null),1200)
+    const timer=window.setInterval(()=>api.getRoom(room.code).then(({room})=>{setLiveRoom(room);if(room.currentChance&&room.currentChance.nonce!==drawNonce){setDrawNonce(room.currentChance.nonce);setChanceEvent(room.currentChance)}}).catch(()=>null),1200)
     return()=>window.clearInterval(timer)
   },[room.code])
 
@@ -40,13 +42,6 @@ export default function GameScreen({ room, user, onExit }: Props) {
     return () => window.clearTimeout(timer)
   }, [phase, timeLeft])
 
-
-  const chanceDeck:ChanceEvent[]=[
-    {id:'owl',title:'Сова на скакалці',text:'Сова провела ранкову руханку для всього району. Місто платить за спортивну ініціативу.',amount:120,art:'owl'},
-    {id:'bus',title:'Бусифікація маршруту',text:'Твій район отримав новий міський бус. Пасажири задоволені, каса теж.',amount:150,art:'bus'},
-    {id:'rich',title:'Я не з такої сім’ї',text:'Твій фінансовий план виявився із багатої сім’ї. Банк повертає дивіденди.',amount:100,art:'rich'},
-    {id:'cotton',title:'Економічна бавовна',text:'Ціни на сусідній вулиці ефектно згоріли. Ремонт коштує грошей.',amount:-90,art:'fire'},
-  ]
 
   const finishTurn = () => {
     setCardOpen(false)
@@ -82,10 +77,30 @@ export default function GameScreen({ room, user, onExit }: Props) {
             setCardOpen(true)
             setPhase('decision')
           } else {
+            if(landed.name==='БУСИФІКАЦІЯ'){
+              setSkippedTurns(value=>({...value,[players[turn].id]:(value[players[turn].id]||0)+1}))
+              setMeme('Бусифікація: наступний хід пропускається.')
+              window.setTimeout(()=>setMeme(''),2600)
+            }
+            if(landed.name==='DON’T PUSH THE HORSES'){
+              setMeme('Don’t push the horses: стоїмо спокійно до наступного кола.')
+              window.setTimeout(()=>setMeme(''),2600)
+            }
+            if(landed.name==='Я У ПОЛЬЩІ'){
+              setMeme('Я у Польщі: експрес до найближчого вокзалу.')
+              window.setTimeout(()=>setMeme(''),2600)
+            }
             if (landed.kind==='chance') {
-              const event=chanceDeck[Math.floor(Math.random()*chanceDeck.length)]
-              setChanceEvent(event)
-              setBalance(value=>Math.max(0,value+event.amount))
+              api.drawChance(room.code).then(({room:nextRoom})=>{
+                setLiveRoom(nextRoom)
+                if(nextRoom.currentChance){
+                  setDrawNonce(nextRoom.currentChance.nonce)
+                  window.setTimeout(()=>{
+                    setChanceEvent(nextRoom.currentChance||null)
+                    setBalance(value=>Math.max(0,value+(nextRoom.currentChance?.amount||0)))
+                  },1100)
+                }
+              })
             }
             if(landed.kind!=='chance')finishTurn()
           }
@@ -112,12 +127,12 @@ export default function GameScreen({ room, user, onExit }: Props) {
     <section className="boardOnly">
       <div className="rotateHint">Права кнопка: обертання. Колесо: масштаб</div>
       <div className="gameBalanceHud"><small>МІЙ БАЛАНС</small><strong>{balance} ₴</strong></div>
-      <ClassicBoard3D size={room.boardSize} positions={positions} players={players} dice={dice} rolling={rolling} onSelectCell={(index)=>{setSelectedCell(index);setCardOpen(true)}} ownership={liveRoom.ownership||{}}/>
+      <ClassicBoard3D size={room.boardSize} positions={positions} players={players} dice={dice} rolling={rolling} onSelectCell={(index)=>{setSelectedCell(index);setCardOpen(true)}} ownership={liveRoom.ownership||{}} drawNonce={drawNonce}/>
       {players.slice(0,6).map((player,index)=><div key={player.id} className={`cornerPlayer corner${index+1} ${turn===index?'current':''}`}>
         <div className={`cornerAvatar ${colors[index]}`}>{player.name.slice(0,1).toUpperCase()}<i/></div><span><strong>{player.name}</strong><small>{turn===index?'Зараз ходить':'1500 ₴'}</small></span>
       </div>)}
       <div className="diceAction"><span>{dice[0]} + {dice[1]}</span><button onClick={roll} disabled={rolling||phase!=='roll'||players[turn]?.id!==user.id}>{rolling?'Кубики летять':'Кинути кубики'}</button></div>
-      <AnimatePresence>{chanceEvent&&<ChanceCard event={chanceEvent} onContinue={()=>{setChanceEvent(null);finishTurn()}}/>}</AnimatePresence>
+      <AnimatePresence>{chanceEvent&&<ChanceCard event={chanceEvent} onContinue={()=>{api.clearChance(room.code).then(({room})=>setLiveRoom(room)).catch(()=>null);setChanceEvent(null);finishTurn()}}/>}</AnimatePresence>
       <AnimatePresence>{meme&&<motion.div className="memeToast" initial={{opacity:0,y:18}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-18}}>{meme}</motion.div>}</AnimatePresence>
       <AnimatePresence>{cardOpen&&<motion.aside className="propertyPanel" initial={{opacity:0,x:60}} animate={{opacity:1,x:0}} exit={{opacity:0,x:70}} transition={{duration:.36,ease:[.16,1,.3,1]}}>
         <button className="propertyClose" onClick={()=>setCardOpen(false)} aria-label="Закрити картку"><X/></button>

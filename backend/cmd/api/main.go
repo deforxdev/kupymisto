@@ -29,15 +29,24 @@ type Player struct {
 	Host  bool   `json:"host"`
 	Ready bool   `json:"ready"`
 }
+type ChanceCard struct {
+	ID     string `json:"id"`
+	Title  string `json:"title"`
+	Text   string `json:"text"`
+	Amount int    `json:"amount"`
+	Art    string `json:"art"`
+	Nonce  int64  `json:"nonce"`
+}
 type Room struct {
-	Code       string            `json:"code"`
-	Name       string            `json:"name"`
-	MaxPlayers int               `json:"maxPlayers"`
-	AgeGroup   string            `json:"ageGroup"`
-	BoardSize  string            `json:"boardSize"`
-	Ownership  map[string]string `json:"ownership"`
-	Players    []Player          `json:"players"`
-	CreatedAt  time.Time         `json:"createdAt"`
+	Code          string            `json:"code"`
+	Name          string            `json:"name"`
+	MaxPlayers    int               `json:"maxPlayers"`
+	AgeGroup      string            `json:"ageGroup"`
+	BoardSize     string            `json:"boardSize"`
+	Ownership     map[string]string `json:"ownership"`
+	CurrentChance *ChanceCard       `json:"currentChance,omitempty"`
+	Players       []Player          `json:"players"`
+	CreatedAt     time.Time         `json:"createdAt"`
 }
 type Store struct {
 	mu       sync.RWMutex
@@ -251,6 +260,40 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		deck := []ChanceCard{
+			{ID: "owl", Title: "Сова на скакалці", Text: "Ранкова руханка оживила район. Місто платить за спортивну ініціативу.", Amount: 120, Art: "owl"},
+			{ID: "bus", Title: "Бусифікація маршруту", Text: "Новий міський бус підняв пасажиропотік і касу району.", Amount: 150, Art: "bus"},
+			{ID: "rich", Title: "Я не з такої сім’ї", Text: "Фінансовий план виявився із багатої сім’ї. Отримай дивіденди.", Amount: 100, Art: "rich"},
+			{ID: "cotton", Title: "Економічна бавовна", Text: "Ціни ефектно згоріли. Ремонт коштує грошей.", Amount: -90, Art: "fire"},
+		}
+		card := deck[time.Now().UnixNano()%int64(len(deck))]
+		card.Nonce = time.Now().UnixNano()
+		room.CurrentChance = &card
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("DELETE /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		room.CurrentChance = nil
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/properties", func(w http.ResponseWriter, r *http.Request) {
