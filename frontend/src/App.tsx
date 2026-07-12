@@ -5,6 +5,9 @@ import { ArrowDownRight, ArrowUpRight, Users, Volume2, VolumeX } from 'lucide-re
 import BoardScene from './components/BoardScene'
 import AgeGate, { type AgeGroup } from './components/AgeGate'
 import { playUiSound, startAmbience, stopAmbience } from './audio'
+import AuthScreen from './components/AuthScreen'
+import LobbyScreen from './components/LobbyScreen'
+import { api, clearToken, getToken, type User } from './api'
 
 const profiles: Record<AgeGroup, { lead: string; ticker: string[]; quote: string; answer: string }> = {
   '10-12': {
@@ -41,7 +44,14 @@ function App() {
   const [ageGroup, setAgeGroup] = useState<AgeGroup | null>(null)
   const profile = profiles[ageGroup ?? '14-15']
   const [buttonState, setButtonState] = useState('Створити кімнату')
+  const [screen, setScreen] = useState<'home' | 'auth' | 'lobby'>('home')
+  const [user, setUser] = useState<User | null>(null)
   const reduceMotion = useReducedMotion()
+
+  useEffect(() => {
+    if (!getToken()) return
+    api.me().then(({ user }) => { setUser(user); setScreen('lobby') }).catch(() => clearToken())
+  }, [])
 
   useEffect(() => {
     if (reduceMotion) return
@@ -52,18 +62,9 @@ function App() {
     return () => { cancelAnimationFrame(frame); lenis.destroy() }
   }, [reduceMotion])
 
-  const createRoom = async () => {
+  const openGame = () => {
     if (sound) playUiSound('click')
-    setButtonState('Створюємо...')
-    try {
-      const response = await fetch('/api/rooms', { method: 'POST' })
-      if (!response.ok) throw new Error('request failed')
-      setButtonState('Кімната готова')
-      if (sound) playUiSound('success')
-    } catch {
-      setButtonState('Демо готове')
-    }
-    window.setTimeout(() => setButtonState('Створити кімнату'), 2200)
+    setScreen(user ? 'lobby' : 'auth')
   }
 
   const selectAge = (group: AgeGroup) => {
@@ -76,6 +77,9 @@ function App() {
     else { startAmbience(); playUiSound('click') }
     setSound(!sound)
   }
+
+  if (screen === 'auth') return <AuthScreen onBack={() => setScreen('home')} onSuccess={(nextUser) => { setUser(nextUser); setScreen('lobby') }} />
+  if (screen === 'lobby' && user) return <LobbyScreen user={user} onLogout={() => { setUser(null); setScreen('home') }} />
 
   return <>
     <AnimatePresence>{!ageGroup && <AgeGate onSelect={selectAge} />}</AnimatePresence>
@@ -93,7 +97,7 @@ function App() {
           <h1>Купуй.<br/>Будуй.<br/><em>Керуй.</em></h1>
           <p className="lead">{profile.lead}</p>
           <div className="heroActions">
-            <button className="primary" onClick={createRoom}>{buttonState}<ArrowUpRight /></button>
+            <button className="primary" onClick={openGame}>{buttonState}<ArrowUpRight /></button>
             <a className="textLink" href="#rules">Правила за 42 секунди <ArrowDownRight /></a>
           </div>
           <div className="players"><Users /><span><strong>2–6 гравців</strong><small>і один підозріло хитрий банкір</small></span></div>
@@ -129,7 +133,7 @@ function App() {
         </div>
       </section>
 
-      <section className="finalCta" id="about"><p>Дружба пройшла багато.</p><h2>Час перевірити її орендою.</h2><button className="primary inverse" onClick={createRoom}>{buttonState}<ArrowUpRight /></button></section>
+      <section className="finalCta" id="about"><p>Дружба пройшла багато.</p><h2>Час перевірити її орендою.</h2><button className="primary inverse" onClick={openGame}>{buttonState}<ArrowUpRight /></button></section>
     </main>
 
     <footer><a className="brand footBrand" href="#top"><Mark /><span>Купи<span>Місто</span></span></a><p>Зроблено в Україні. Без емодзі та нудних квадратів.</p><span>2026</span></footer>
