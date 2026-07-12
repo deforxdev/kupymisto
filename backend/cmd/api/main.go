@@ -8,6 +8,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -398,13 +399,7 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
-		deck := []ChanceCard{
-			{ID: "coffee-flood", Title: "Кава пішла не туди", Text: "Лате вирішило стати частиною ноутбука. Ремонт техніки коштує грошей.", Amount: -140, Art: "fire"},
-			{ID: "bus-fine", Title: "Бус приїхав без тебе", Text: "Довелося брати таксі через усе місто. Списуємо дорожні витрати.", Amount: -90, Art: "bus"},
-			{ID: "rich-audit", Title: "Із багатої, але є нюанс", Text: "Банк попросив пояснити походження мемних доходів. Комісія вже списана.", Amount: -120, Art: "rich"},
-			{ID: "owl-night", Title: "Сова не спала", Text: "Нічна руханка сусідів закінчилася штрафом за шум.", Amount: -70, Art: "owl"},
-			{ID: "roads", Title: "Асфальт зійшов разом зі снігом", Text: "Район скидається на терміновий ремонт дороги.", Amount: -110, Art: "fire"},
-		}
+		deck := loadDeck("bad")
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
@@ -425,12 +420,7 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
-		deck := []ChanceCard{
-			{ID: "owl", Title: "Сова на скакалці", Text: "Ранкова руханка оживила район. Місто платить за спортивну ініціативу.", Amount: 120, Art: "owl"},
-			{ID: "bus", Title: "Бусифікація маршруту", Text: "Новий міський бус підняв пасажиропотік і касу району.", Amount: 150, Art: "bus"},
-			{ID: "rich", Title: "Я не з такої сім’ї", Text: "Фінансовий план виявився із багатої сім’ї. Отримай дивіденди.", Amount: 100, Art: "rich"},
-			{ID: "cotton", Title: "Економічна бавовна", Text: "Ціни ефектно згоріли. Ремонт коштує грошей.", Amount: -90, Art: "fire"},
-		}
+		deck := loadDeck("chance")
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
@@ -592,6 +582,31 @@ func main() {
 func validAgeGroup(value string) bool {
 	return value == "10-12" || value == "14-15" || value == "18-20"
 }
+
+type DeckConfig struct {
+	Chance []ChanceCard `json:"chance"`
+	Bad    []ChanceCard `json:"bad"`
+}
+
+func loadDeck(kind string) []ChanceCard {
+	raw, err := os.ReadFile("data/decks.json")
+	if err == nil {
+		var cfg DeckConfig
+		if json.Unmarshal(raw, &cfg) == nil {
+			if kind == "bad" && len(cfg.Bad) > 0 {
+				return cfg.Bad
+			}
+			if kind == "chance" && len(cfg.Chance) > 0 {
+				return cfg.Chance
+			}
+		}
+	}
+	if kind == "bad" {
+		return []ChanceCard{{ID: "fallback-bad", Title: "Халепа", Text: "Несподіваний штраф.", Amount: -100, Art: "fire"}}
+	}
+	return []ChanceCard{{ID: "fallback-good", Title: "Шанс", Text: "Міський бонус.", Amount: 100, Art: "rich"}, {ID: "fallback-bad", Title: "Невдалий шанс", Text: "Комісія банку.", Amount: -70, Art: "fire"}}
+}
+
 func containsPlayer(room *Room, id string) bool {
 	for _, p := range room.Players {
 		if p.ID == id {

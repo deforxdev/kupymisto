@@ -63,7 +63,7 @@ function Die({home,value,rolling,seed}:{home:[number,number,number];value:number
 }
 
 
-function ChanceDeck({drawNonce,onClick}:{drawNonce:number;onClick:()=>void}){
+function ChanceDeck({drawNonce,onClick,kind}:{drawNonce:number;onClick:()=>void;kind:'chance'|'bad'}){
   const card=useRef<Group>(null)
   const previous=useRef(drawNonce)
   const progress=useRef(1)
@@ -80,10 +80,10 @@ function ChanceDeck({drawNonce,onClick}:{drawNonce:number;onClick:()=>void}){
     card.current.visible=progress.current<.985
   })
   return <group onClick={(e)=>{e.stopPropagation();onClick()}}>
-    {Array.from({length:7}).map((_,index)=><RoundedBox key={index} args={[1.12,.055,1.48]} radius={.055} smoothness={3} position={[1.55,.50+index*.045,-.45]} castShadow><meshStandardMaterial color={index%2?'#e8bd32':'#244f95'} roughness={.58}/></RoundedBox>)}
+    {Array.from({length:7}).map((_,index)=><RoundedBox key={index} args={[1.12,.055,1.48]} radius={.055} smoothness={3} position={[1.55,.50+index*.045,-.45]} castShadow><meshStandardMaterial color={kind==='chance'?(index%2?'#e8bd32':'#244f95'):(index%2?'#f0d4c6':'#b63832')} roughness={.58}/></RoundedBox>)}
     <group ref={card} position={[1.55,.69,-.45]} rotation={[-Math.PI/2,0,0]} visible={false}>
-      <RoundedBox args={[1.12,.045,1.48]} radius={.055} smoothness={3} castShadow><meshStandardMaterial color="#e8bd32" roughness={.46}/></RoundedBox>
-      <Text position={[0,.04,0]} rotation={[-Math.PI/2,0,0]} fontSize={.18} maxWidth={.82} color="#20202a" textAlign="center">ШАНС</Text>
+      <RoundedBox args={[1.12,.045,1.48]} radius={.055} smoothness={3} castShadow><meshStandardMaterial color={kind==='chance'?'#e8bd32':'#b63832'} roughness={.46}/></RoundedBox>
+      <Text position={[0,.04,0]} rotation={[-Math.PI/2,0,0]} fontSize={.18} maxWidth={.82} color="#20202a" textAlign="center">{kind==='chance'?'ШАНС':'ХАЛЕПА'}</Text>
     </group>
   </group>
 }
@@ -98,6 +98,6 @@ function BoardModel({size,positions,players,dice,rolling,onSelectCell,ownership,
           <mesh position={[-(corner?0.55:0.42),0,0]}><boxGeometry args={[.035,.055,1.08]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           <mesh position={[(corner?0.55:0.42),0,0]}><boxGeometry args={[.035,.055,1.08]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           {Array.from({length:houses[String(index)]||0}).map((_,h)=><mesh key={h} position={[-.22+h*.22,.17,-.08]} castShadow><boxGeometry args={[.16,.22,.16]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>)}
-        </group>}{cell.price&&<Text position={[0,.113,.29]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<ChanceDeck drawNonce={drawNonce} onClick={onChanceDeckClick}/><group position={[-1.55,.02,-.45]}><ChanceDeck drawNonce={drawNonce} onClick={onBadDeckClick}/></group><Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
+        </group>}{cell.price&&<Text position={[0,.113,.29]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<ChanceDeck drawNonce={drawNonce} onClick={onChanceDeckClick} kind="chance"/><group position={[-1.55,.02,-.45]}><ChanceDeck drawNonce={drawNonce} onClick={onBadDeckClick} kind="bad"/></group><Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
 }
 export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean;onSelectCell:(index:number)=>void;ownership:Record<string,string>;drawNonce:number;houses:Record<string,number>;onChanceDeckClick:()=>void;onBadDeckClick:()=>void}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number];return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true,toneMapping:ACESFilmicToneMapping,toneMappingExposure:.72,outputColorSpace:SRGBColorSpace}}><color attach="background" args={['#557b61']}/><ambientLight intensity={.42}/><hemisphereLight args={['#c3d9c5','#263b2d',.72]}/><directionalLight position={[7,12,5]} intensity={1.55} castShadow shadow-mapSize={[1024,1024]}/><BoardModel {...props}/><ContactShadows position={[0,-.24,0]} opacity={.3} scale={20} blur={2.4} far={8}/></Canvas>}

@@ -2,7 +2,7 @@ import { useEffect,useMemo,useRef,useState } from 'react'
 import { AnimatePresence,motion } from 'framer-motion'
 import { ArrowLeftRight,Clock3,LogOut,Settings,Volume2 } from 'lucide-react'
 import { api,type Room,type User } from '../api'
-import { playDiceRoll,playPawnMove,unlockAudio } from '../audio'
+import { playAssetSound,playDiceRoll,playPawnMove,playUiSound,unlockAudio } from '../audio'
 import ClassicBoard3D,{makeCells} from './ClassicBoard3D'
 import ChanceCard,{type ChanceEvent} from './ChanceCard'
 import TradePanel,{IncomingTrades} from './TradePanel'
@@ -20,7 +20,18 @@ export default function GameScreen({room,user,onExit}:Props){
  useEffect(()=>{setTimeLeft(phase==='roll'?(liveRoom.turnSeconds||60):phase==='decision'?(liveRoom.decisionSeconds||45):0)},[phase,turn,liveRoom.turnSeconds,liveRoom.decisionSeconds])
  useEffect(()=>{if(phase==='moving'||phase==='card')return;if(timeLeft<=0){finishTurn();return}const t=setTimeout(()=>setTimeLeft(v=>v-1),1000);return()=>clearTimeout(t)},[timeLeft,phase])
  const roll=async()=>{if(rolling||phase!=='roll'||players[turn]?.id!==user.id)return;await unlockAudio();setPhase('moving');setRolling(true);playDiceRoll();setTimeout(()=>{const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6),dest=((positions[turn]||0)+a+b)%cells.length;setDice([a,b]);setRolling(false);setTimeout(()=>{playPawnMove(a+b);setPositions(v=>v.map((p,i)=>i===turn?dest:p));setSelected(dest);setTimeout(()=>{const landed=cells[dest];if(landed.kind==='city'){setPropertyOpen(true);setPhase('decision')}else if(landed.kind==='chance'){setPendingDeck('chance');setPhase('card')}else if(landed.kind==='tax'){setPendingDeck('bad');setPhase('card')}else finishTurn()},(a+b)*190+250)},1000)},700)}
- const draw=async(kind:'chance'|'bad')=>{if(pendingDeck!==kind||players[turn]?.id!==user.id)return;const result=kind==='chance'?await api.drawChance(room.code):await api.drawBadLuck(room.code);setLiveRoom(result.room);setPendingDeck(null);setPhase('card')}
+ const draw=async(kind:'chance'|'bad')=>{
+  if(pendingDeck!==kind||players[turn]?.id!==user.id)return
+  await unlockAudio()
+  void playAssetSound('card-draw.ogg',()=>playUiSound('select'))
+  const result=kind==='chance'?await api.drawChance(room.code):await api.drawBadLuck(room.code)
+  setLiveRoom(result.room);setPendingDeck(null);setPhase('card')
+  if(result.room.currentChance){
+   shownNonce.current=result.room.currentChance.nonce
+   setDrawNonce(result.room.currentChance.nonce)
+   setChance(result.room.currentChance)
+  }
+ }
  const closeCard=async()=>{setChance(null);if(players[turn]?.id===user.id){await api.clearChance(room.code).catch(()=>null);finishTurn()}}
  const buy=async()=>{if(!standing||ownerId||balance<(current.price||0))return;setLiveRoom((await api.purchaseProperty(room.code,{cellIndex:selected,price:current.price||0})).room);finishTurn()}
  const canBuy=standing&&current.kind==='city'&&!ownerId&&balance>=(current.price||0)
