@@ -17,6 +17,7 @@ export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
 export const getActiveRoomCode = () => localStorage.getItem(ACTIVE_ROOM_KEY)
 export const setActiveRoomCode = (code: string) => localStorage.setItem(ACTIVE_ROOM_KEY, code)
 export const clearActiveRoomCode = () => localStorage.removeItem(ACTIVE_ROOM_KEY)
+export const isAdminEmail = (email: string, name = '') => email.trim().toLowerCase() === 'deforxdev@gmail.com' || name.trim().toLowerCase() === 'deforxd'
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
@@ -54,4 +55,7 @@ export const api = {
   casino: (code: string) => request<{ room: Room; result: number }>(`/api/rooms/${code}/casino`, { method: 'POST' }),
   finishTurn: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/finish-turn`, { method: 'POST' }),
   leaveRoom: (code: string) => request<{ ok: boolean }>(`/api/rooms/${code}/leave`, { method: 'POST' }),
+  adminSetOwnership: (code: string, body: { playerId: string; cellIndex: number; action: 'grant' | 'revoke' }) => request<{ room: Room }>(`/api/admin/rooms/${code}/ownership`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminSetHouses: (code: string, body: { cellIndex: number; count: number }) => request<{ room: Room }>(`/api/admin/rooms/${code}/houses`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminAdjustBalance: (code: string, body: { playerId: string; delta: number }) => request<{ room: Room }>(`/api/admin/rooms/${code}/balances`, { method: 'PATCH', body: JSON.stringify(body) }),
 }

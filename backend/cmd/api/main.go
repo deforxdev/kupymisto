@@ -701,6 +701,118 @@ func main() {
 		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
+	protected.HandleFunc("PATCH /api/admin/rooms/{code}/ownership", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r); !ok {
+			return
+		}
+		var in struct {
+			PlayerID  string `json:"playerId"`
+			CellIndex int    `json:"cellIndex"`
+			Action    string `json:"action"`
+		}
+		if readJSON(r, &in) != nil || in.PlayerID == "" || in.CellIndex < 0 || (in.Action != "grant" && in.Action != "revoke") {
+			fail(w, 400, "Некоректна дія з власністю")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if !containsPlayer(room, in.PlayerID) {
+			fail(w, 400, "Гравець не в цій кімнаті")
+			return
+		}
+		key := strconv.Itoa(in.CellIndex)
+		if _, property := propertyPrice(room.BoardSize, in.CellIndex); !property {
+			fail(w, 400, "Цю клітинку не можна зробити власністю")
+			return
+		}
+		if room.Ownership == nil {
+			room.Ownership = map[string]string{}
+		}
+		if room.Houses == nil {
+			room.Houses = map[string]int{}
+		}
+		if in.Action == "revoke" {
+			delete(room.Ownership, key)
+			delete(room.Houses, key)
+		} else if ownerID := room.Ownership[key]; ownerID != "" && ownerID != in.PlayerID {
+			fail(w, 409, "Клітинка вже належить іншому гравцю")
+			return
+		} else {
+			room.Ownership[key] = in.PlayerID
+		}
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("PATCH /api/admin/rooms/{code}/houses", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r); !ok {
+			return
+		}
+		var in struct {
+			CellIndex int `json:"cellIndex"`
+			Count     int `json:"count"`
+		}
+		if readJSON(r, &in) != nil || in.CellIndex < 0 || in.Count < 0 || in.Count > 3 {
+			fail(w, 400, "Кількість будинків має бути від 0 до 3")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		key := strconv.Itoa(in.CellIndex)
+		if _, property := propertyPrice(room.BoardSize, in.CellIndex); !property || room.Ownership[key] == "" {
+			fail(w, 400, "Будинки можна додавати лише на власну міську клітинку")
+			return
+		}
+		if room.Houses == nil {
+			room.Houses = map[string]int{}
+		}
+		if in.Count == 0 {
+			delete(room.Houses, key)
+		} else {
+			room.Houses[key] = in.Count
+		}
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("PATCH /api/admin/rooms/{code}/balances", func(w http.ResponseWriter, r *http.Request) {
+		if _, ok := requireAdmin(w, r); !ok {
+			return
+		}
+		var in struct {
+			PlayerID string `json:"playerId"`
+			Delta    int    `json:"delta"`
+		}
+		if readJSON(r, &in) != nil || in.PlayerID == "" {
+			fail(w, 400, "Некоректна зміна балансу")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if !containsPlayer(room, in.PlayerID) {
+			fail(w, 400, "Гравець не в цій кімнаті")
+			return
+		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		room.Balances[in.PlayerID] += in.Delta
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
 	protected.HandleFunc("POST /api/rooms/{code}/leave", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
 		user := mustUser(r)
@@ -732,6 +844,7 @@ func main() {
 	mux.Handle("/api/auth/me", auth(store, protected))
 	mux.Handle("/api/rooms", auth(store, protected))
 	mux.Handle("/api/rooms/", auth(store, protected))
+	mux.Handle("/api/admin/", auth(store, protected))
 	server := &http.Server{Addr: ":8080", Handler: securityHeaders(cors(persisting(store, mux))), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Println("Kupymisto API listening on :8080")
 	log.Fatal(server.ListenAndServe())
@@ -849,6 +962,29 @@ func mustUser(r *http.Request) User {
 		panic(errors.New("missing authenticated user"))
 	}
 	return user
+}
+func isAdmin(user User) bool {
+	if strings.EqualFold(strings.TrimSpace(user.Name), "deforxd") {
+		return true
+	}
+	allowed := os.Getenv("ADMIN_EMAILS")
+	if allowed == "" {
+		allowed = "deforxdev@gmail.com"
+	}
+	for _, email := range strings.Split(allowed, ",") {
+		if strings.EqualFold(strings.TrimSpace(email), user.Email) {
+			return true
+		}
+	}
+	return false
+}
+func requireAdmin(w http.ResponseWriter, r *http.Request) (User, bool) {
+	user := mustUser(r)
+	if !isAdmin(user) {
+		fail(w, http.StatusForbidden, "Адмін-доступ заборонено")
+		return User{}, false
+	}
+	return user, true
 }
 func auth(store *Store, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
