@@ -2,8 +2,8 @@ export type User = { id: string; name: string; email: string }
 export type Player = { id: string; name: string; host: boolean; ready: boolean }
 export type AgeGroup = '10-12' | '14-15' | '18-20'
 export type BoardSize = 'standard' | 'large'
-export type SharedChance = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; nonce:number }
-export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; createdAt: string }
+export type SharedChance = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; nonce:number; drawnBy:string }
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; createdAt: string }
 
 type ApiError = { error?: string }
 
@@ -37,6 +37,7 @@ export const api = {
   getRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}`),
   drawChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'POST' }),
   clearChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'DELETE' }),
+  buildHouse: (code:string, body:{ cellIndex:number }) => request<{ room:Room }>(`/api/rooms/${code}/houses`, { method:'POST', body:JSON.stringify(body) }),
   purchaseProperty: (code: string, body: { cellIndex:number; price:number }) => request<{ room: Room }>(`/api/rooms/${code}/properties`, { method: 'POST', body: JSON.stringify(body) }),
   toggleReady: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/ready`, { method: 'POST' }),
   leaveRoom: (code: string) => request<{ ok: boolean }>(`/api/rooms/${code}/leave`, { method: 'POST' }),

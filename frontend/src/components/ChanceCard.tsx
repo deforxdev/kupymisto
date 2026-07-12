@@ -1,7 +1,7 @@
 import { motion } from 'framer-motion'
 import { ArrowRight, X } from 'lucide-react'
 
-export type ChanceEvent = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire' }
+export type ChanceEvent = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; drawnBy?:string }
 
 type Props = { event:ChanceEvent; onContinue:()=>void }
 
