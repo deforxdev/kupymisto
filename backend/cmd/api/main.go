@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
+	mathrand "math/rand"
 	"net/http"
 	"os"
 	"regexp"
@@ -66,6 +67,9 @@ type Room struct {
 	CurrentChance   *ChanceCard       `json:"currentChance,omitempty"`
 	Players         []Player          `json:"players"`
 	Started         bool              `json:"started"`
+	Positions       []int             `json:"positions"`
+	Dice            [2]int            `json:"dice"`
+	Turn            int               `json:"turn"`
 	CreatedAt       time.Time         `json:"createdAt"`
 }
 type Store struct {
@@ -215,7 +219,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -281,6 +285,7 @@ func main() {
 		if _, ok := room.Balances[user.ID]; !ok {
 			room.Balances[user.ID] = 1500
 		}
+		room.Positions = append(room.Positions, 0)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("GET /api/rooms/{code}", func(w http.ResponseWriter, r *http.Request) {
@@ -579,6 +584,49 @@ func main() {
 			return
 		}
 		room.Started = true
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/roll", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if !room.Started || len(room.Players) == 0 || room.Players[room.Turn].ID != user.ID {
+			fail(w, 409, "Зараз не твій хід")
+			return
+		}
+		if len(room.Positions) != len(room.Players) {
+			room.Positions = make([]int, len(room.Players))
+		}
+		boardCells := 40
+		if room.BoardSize == "large" {
+			boardCells = 56
+		}
+		a, b := mathrand.Intn(6)+1, mathrand.Intn(6)+1
+		room.Dice = [2]int{a, b}
+		room.Positions[room.Turn] = (room.Positions[room.Turn] + a + b) % boardCells
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if len(room.Players) == 0 || room.Players[room.Turn].ID != user.ID {
+			fail(w, 409, "Зараз не твій хід")
+			return
+		}
+		room.Turn = (room.Turn + 1) % len(room.Players)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/leave", func(w http.ResponseWriter, r *http.Request) {

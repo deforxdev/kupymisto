@@ -4,7 +4,7 @@ export type AgeGroup = '10-12' | '14-15' | '18-20'
 export type BoardSize = 'standard' | 'large'
 export type SharedChance = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; nonce:number; drawnBy:string }
 export type Trade={id:string;from:string;to:string;giveCell:number;wantCell:number;giveMoney:number;wantMoney:number;status:'pending'|'accepted'|'rejected';expiresAt:string}
-export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; balances:Record<string,number>; trades:Trade[]; turnSeconds:number; decisionSeconds:number; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; started: boolean; createdAt: string }
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; balances:Record<string,number>; trades:Trade[]; turnSeconds:number; decisionSeconds:number; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; started: boolean; positions: number[]; dice: [number, number]; turn: number; createdAt: string }
 
 type ApiError = { error?: string }
 
@@ -50,5 +50,7 @@ export const api = {
   purchaseProperty: (code: string, body: { cellIndex:number; price:number }) => request<{ room: Room }>(`/api/rooms/${code}/properties`, { method: 'POST', body: JSON.stringify(body) }),
   toggleReady: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/ready`, { method: 'POST' }),
   startRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/start`, { method: 'POST' }),
+  roll: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/roll`, { method: 'POST' }),
+  finishTurn: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/finish-turn`, { method: 'POST' }),
   leaveRoom: (code: string) => request<{ ok: boolean }>(`/api/rooms/${code}/leave`, { method: 'POST' }),
 }
