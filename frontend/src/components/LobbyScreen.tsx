@@ -36,7 +36,11 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   useEffect(() => {
     if (!room) return
     const timer = window.setInterval(async () => {
-      try { setRoom((await api.getRoom(room.code)).room) } catch { /* room may be closing */ }
+      try {
+        const nextRoom = (await api.getRoom(room.code)).room
+        setRoom(nextRoom)
+        if (nextRoom.started) setGameStarted(true)
+      } catch { /* room may be closing */ }
     }, 2500)
     return () => window.clearInterval(timer)
   }, [room?.code])
@@ -52,6 +56,20 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const joinRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.joinRoom(joinCode.replace(/[^a-z0-9]/gi, '').toUpperCase())) }
   const copyCode = async () => { if (!room) return; await navigator.clipboard.writeText(room.code); setCopied(true); playUiSound('select'); window.setTimeout(() => setCopied(false), 1600) }
   const leave = async () => { if (!room) return; await api.leaveRoom(room.code).catch(() => null); clearActiveRoomCode(); setRoom(null) }
+  const startGame = async () => {
+    if (!room) return
+    setError('')
+    setLoading(true)
+    try {
+      const result = await api.startRoom(room.code)
+      setRoom(result.room)
+      setGameStarted(true)
+      setActiveRoomCode(room.code)
+      playUiSound('success')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Не вдалося почати гру')
+    } finally { setLoading(false) }
+  }
   const logout = () => { clearToken(); onLogout() }
 
   if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { clearActiveRoomCode(); setGameStarted(false) }} />
@@ -71,7 +89,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
             {room.players.map((player, index) => <motion.article key={player.id} initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * .06 }}><div className={`avatar avatar${index % 4}`}>{player.name.slice(0, 1).toUpperCase()}</div><div><strong>{player.name}</strong><small>{player.host ? 'Власник кімнати' : player.ready ? 'Готовий грати' : 'Ще думає'}</small></div><span className={player.ready ? 'ready yes' : 'ready'}>{player.ready ? 'ГОТОВИЙ' : 'НЕ ГОТОВИЙ'}</span></motion.article>)}
             {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => <article className="emptyPlayer" key={i}><div className="avatar"><Plus/></div><div><strong>Вільне місце</strong><small>Надішли код другу</small></div></article>)}
           </div>
-          <aside className="roomActions"><div className="insideRoomSettings"><span>НАЛАШТУВАННЯ ГРИ</span><label>Розмір карти<select value={room.boardSize} disabled={host?.id !== user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:e.target.value as BoardSize,turnSeconds:room.turnSeconds,decisionSeconds:room.decisionSeconds})).room)}><option value="standard">Стандартна, 40 клітинок</option><option value="large">Велика, 56 клітинок</option></select></label><label>Час на хід<select value={room.turnSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:Number(e.target.value),decisionSeconds:room.decisionSeconds})).room)}><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option><option value="90">90 секунд</option></select></label><label>Час на рішення<select value={room.decisionSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:room.turnSeconds,decisionSeconds:Number(e.target.value)})).room)}><option value="20">20 секунд</option><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option></select></label></div><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => setGameStarted(true)} disabled={!host || host.id !== user.id}>Почати тестову гру<ArrowRight/></button><small>{host?.id === user.id ? 'Тестовий режим: можна почати навіть одному.' : 'Власник кімнати може почати гру.'}</small></aside>
+          <aside className="roomActions"><div className="insideRoomSettings"><span>НАЛАШТУВАННЯ ГРИ</span><label>Розмір карти<select value={room.boardSize} disabled={host?.id !== user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:e.target.value as BoardSize,turnSeconds:room.turnSeconds,decisionSeconds:room.decisionSeconds})).room)}><option value="standard">Стандартна, 40 клітинок</option><option value="large">Велика, 56 клітинок</option></select></label><label>Час на хід<select value={room.turnSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:Number(e.target.value),decisionSeconds:room.decisionSeconds})).room)}><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option><option value="90">90 секунд</option></select></label><label>Час на рішення<select value={room.decisionSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:room.turnSeconds,decisionSeconds:Number(e.target.value)})).room)}><option value="20">20 секунд</option><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option></select></label></div><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => void startGame()} disabled={!host || host.id !== user.id || !room.players.every(player => player.ready) || room.players.length < 2 || loading}>Почати гру<ArrowRight/></button><small>{room.players.length < 2 ? 'Потрібно щонайменше 2 гравці.' : room.players.every(player => player.ready) ? 'Усі готові — можна починати.' : 'Спочатку всі гравці мають натиснути «Готовий».'}</small></aside>
         </div>
       </motion.section>
     </main>

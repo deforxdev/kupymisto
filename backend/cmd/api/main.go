@@ -65,6 +65,7 @@ type Room struct {
 	Houses          map[string]int    `json:"houses"`
 	CurrentChance   *ChanceCard       `json:"currentChance,omitempty"`
 	Players         []Player          `json:"players"`
+	Started         bool              `json:"started"`
 	CreatedAt       time.Time         `json:"createdAt"`
 }
 type Store struct {
@@ -548,6 +549,37 @@ func main() {
 			}
 		}
 		fail(w, 403, "Спочатку увійди в кімнату")
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/start", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		host := false
+		allReady := len(room.Players) >= 2
+		for _, player := range room.Players {
+			if player.ID == user.ID && player.Host {
+				host = true
+			}
+			if !player.Ready {
+				allReady = false
+			}
+		}
+		if !host {
+			fail(w, 403, "Почати гру може лише власник кімнати")
+			return
+		}
+		if !allReady {
+			fail(w, 409, "Усі гравці мають бути готові")
+			return
+		}
+		room.Started = true
+		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/leave", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
