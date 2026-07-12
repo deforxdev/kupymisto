@@ -6,25 +6,26 @@ import { makeCells } from './ClassicBoard3D'
 
 interface AdminPanelProps {
   room: Room
+  adminId: string
   onRoom: (room: Room) => void
   onClose: () => void
 }
 
 const buttonMotion = { whileTap: { scale: 0.96, y: 2 }, transition: { type: 'spring' as const, stiffness: 400, damping: 10 } }
 
-export default function AdminPanel({ room, onRoom, onClose }: AdminPanelProps) {
+export default function AdminPanel({ room, adminId, onRoom, onClose }: AdminPanelProps) {
   const cells = useMemo(() => makeCells(room.boardSize), [room.boardSize])
   const propertyCells = useMemo(() => cells.map((cell, index) => ({ cell, index })).filter(({ cell }) => cell.kind === 'city'), [cells])
   const players = room.players
-  const [playerId, setPlayerId] = useState(players[0]?.id ?? '')
+  const [playerId, setPlayerId] = useState(players.find((player) => player.id !== adminId)?.id ?? players[0]?.id ?? '')
   const [cellIndex, setCellIndex] = useState(propertyCells[0]?.index ?? 0)
   const [houseCount, setHouseCount] = useState(room.houses?.[String(cellIndex)] ?? 0)
   const [delta, setDelta] = useState(100)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
   useEffect(() => {
-    if (!players.some((player) => player.id === playerId)) setPlayerId(players[0]?.id ?? '')
-  }, [players, playerId])
+    if (!players.some((player) => player.id === playerId) || playerId === adminId) setPlayerId(players.find((player) => player.id !== adminId)?.id ?? '')
+  }, [players, playerId, adminId])
 
   const run = async (operation: () => Promise<{ room: Room }>, success: string) => {
     setError('')
@@ -57,7 +58,7 @@ export default function AdminPanel({ room, onRoom, onClose }: AdminPanelProps) {
           {players.map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}
         </select>
       </label>
-      <motion.button className="adminDanger adminWide" {...buttonMotion} disabled={!playerId || players.length < 2} onClick={() => {
+      <motion.button className="adminDanger adminWide" {...buttonMotion} disabled={!playerId || playerId === adminId || players.length < 2} onClick={() => {
         if (window.confirm(`Кікнути ${players.find((player) => player.id === playerId)?.name ?? 'гравця'} з гри?`)) {
           void run(() => api.adminKickPlayer(room.code, playerId), 'Гравця кікнуто, його клітинки звільнено')
         }
