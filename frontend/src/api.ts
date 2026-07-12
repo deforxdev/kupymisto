@@ -51,6 +51,7 @@ export const api = {
   toggleReady: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/ready`, { method: 'POST' }),
   startRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/start`, { method: 'POST' }),
   roll: (code: string) => request<{ room: Room; rent: number; autoFinished: boolean }>(`/api/rooms/${code}/roll`, { method: 'POST' }),
+  casino: (code: string) => request<{ room: Room; result: number }>(`/api/rooms/${code}/casino`, { method: 'POST' }),
   finishTurn: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/finish-turn`, { method: 'POST' }),
   leaveRoom: (code: string) => request<{ ok: boolean }>(`/api/rooms/${code}/leave`, { method: 'POST' }),
 }

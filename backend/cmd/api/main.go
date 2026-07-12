@@ -626,6 +626,9 @@ func main() {
 		}
 		destination := (previousPosition + a + b) % boardCells
 		room.Positions[room.Turn] = destination
+		if reward := cornerReward(room.BoardSize, destination); reward > 0 {
+			room.Balances[user.ID] += reward
+		}
 		rent := 0
 		autoFinished := false
 		ownerID := room.Ownership[strconv.Itoa(destination)]
@@ -640,6 +643,33 @@ func main() {
 			room.Turn = (room.Turn + 1) % len(room.Players)
 		}
 		writeJSON(w, 200, map[string]any{"room": room, "rent": rent, "autoFinished": autoFinished})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/casino", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) || len(room.Players) == 0 || room.Players[room.Turn].ID != user.ID {
+			fail(w, 409, "Зараз не твій хід")
+			return
+		}
+		casinoIndex := 8
+		if room.BoardSize == "large" {
+			casinoIndex = 12
+		}
+		if len(room.Positions) != len(room.Players) || room.Positions[room.Turn] != casinoIndex {
+			fail(w, 409, "Спочатку потрібно стати на казино")
+			return
+		}
+		outcomes := []int{-50, 0, 50, 75, 100, 150}
+		result := outcomes[mathrand.Intn(len(outcomes))]
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		room.Balances[user.ID] += result
+		room.Turn = (room.Turn + 1) % len(room.Players)
+		writeJSON(w, 200, map[string]any{"room": room, "result": result})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
@@ -703,20 +733,39 @@ func propertyPrice(boardSize string, index int) (int, bool) {
 	if boardSize == "large" {
 		side = 15
 	}
-	if index < 0 || index >= side*4-4 || index%(side-1) == 0 || index%7 == 0 || index%9 == 0 {
+	lane := index % (side - 1)
+	if index < 0 || index >= side*4-4 || lane == 0 || index == side-3 || lane == 3 || lane == 7 {
 		return 0, false
 	}
-	if index%5 == 0 {
+	if lane == 5 {
 		return 200, true
 	}
 	city := 0
 	for current := 0; current <= index; current++ {
-		if current%(side-1) == 0 || current%7 == 0 || current%9 == 0 || current%5 == 0 {
+		currentLane := current % (side - 1)
+		if currentLane == 0 || current == side-3 || currentLane == 3 || currentLane == 7 || currentLane == 5 {
 			continue
 		}
 		city++
 	}
 	return 100 + (city%9)*30, true
+}
+
+func cornerReward(boardSize string, index int) int {
+	side := 11
+	if boardSize == "large" {
+		side = 15
+	}
+	switch index {
+	case side - 1:
+		return 100
+	case (side - 1) * 2:
+		return 75
+	case (side - 1) * 3:
+		return 50
+	default:
+		return 0
+	}
 }
 
 type DeckConfig struct {
