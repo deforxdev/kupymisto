@@ -3,7 +3,8 @@ export type Player = { id: string; name: string; host: boolean; ready: boolean }
 export type AgeGroup = '10-12' | '14-15' | '18-20'
 export type BoardSize = 'standard' | 'large'
 export type SharedChance = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; nonce:number; drawnBy:string }
-export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; createdAt: string }
+export type Trade={id:string;from:string;to:string;giveCell:number;wantCell:number;giveMoney:number;wantMoney:number;status:'pending'|'accepted'|'rejected';expiresAt:string}
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; balances:Record<string,number>; trades:Trade[]; turnSeconds:number; decisionSeconds:number; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; createdAt: string }
 
 type ApiError = { error?: string }
 
@@ -32,9 +33,11 @@ export const api = {
   login: (body: { email: string; password: string }) => request<{ token: string; user: User }>('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   me: () => request<{ user: User }>('/api/auth/me'),
   createRoom: (body: { name: string; maxPlayers: number }) => request<{ room: Room }>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
-  updateRoom: (code: string, body: { ageGroup: AgeGroup; boardSize: BoardSize }) => request<{ room: Room }>(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
+  updateRoom: (code: string, body: { boardSize: BoardSize; turnSeconds:number; decisionSeconds:number }) => request<{ room: Room }>(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   joinRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/join`, { method: 'POST' }),
   getRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}`),
+  createTrade:(code:string,body:{to:string;giveCell:number;wantCell:number;giveMoney:number;wantMoney:number})=>request<{room:Room}>(`/api/rooms/${code}/trades`,{method:'POST',body:JSON.stringify(body)}),
+  answerTrade:(code:string,id:string,accept:boolean)=>request<{room:Room}>(`/api/rooms/${code}/trades/${id}`,{method:'PATCH',body:JSON.stringify({accept})}),
   drawBadLuck: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/bad-luck`, { method:'POST' }),
   drawChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'POST' }),
   clearChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'DELETE' }),

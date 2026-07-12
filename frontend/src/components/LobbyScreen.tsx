@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Copy, DoorOpen, LogOut, Plus, Users, X } from 'lucide-react'
-import { api, clearToken, type AgeGroup, type BoardSize, type Room, type User } from '../api'
+import { api, clearToken, type BoardSize, type Room, type User } from '../api'
 import GameScreen from './GameScreen'
 import { playUiSound } from '../audio'
 
@@ -11,7 +11,6 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const [room, setRoom] = useState<Room | null>(null)
   const [roomName, setRoomName] = useState(`${user.name}, місто і компанія`)
   const [maxPlayers, setMaxPlayers] = useState(4)
-  const [ageGroup, setAgeGroup] = useState<AgeGroup>('14-15')
   const [boardSize, setBoardSize] = useState<BoardSize>('standard')
   const [gameStarted, setGameStarted] = useState(false)
   const [joinCode, setJoinCode] = useState('')
@@ -49,7 +48,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
       <header className="lobbyHeader"><a className="brand" href="#"><span>Купи<span>Місто</span></span></a><button className="quietButton" onClick={leave}><X/> Вийти з кімнати</button></header>
       <motion.section className="roomLobby" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
         <div className="roomTop">
-          <div><span className="sectionNo">ПРИВАТНА КІМНАТА · ВІК {room.ageGroup}</span><h1>{room.name}</h1><p>Гравці заходять напряму за кодом. Ніякого пошуку в загальному списку.</p></div>
+          <div><span className="sectionNo">ПРИВАТНА КІМНАТА</span><h1>{room.name}</h1><p>Гравці заходять напряму за кодом. Ніякого пошуку в загальному списку.</p></div>
           <button className="roomCode" onClick={copyCode} aria-label="Скопіювати код кімнати"><small>КОД ДЛЯ ВХОДУ</small><strong>{room.code}</strong><span>{copied ? <Check/> : <Copy/>}{copied ? 'Скопійовано' : 'Скопіювати'}</span></button>
         </div>
         <div className="roomContent">
@@ -57,7 +56,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
             {room.players.map((player, index) => <motion.article key={player.id} initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * .06 }}><div className={`avatar avatar${index % 4}`}>{player.name.slice(0, 1).toUpperCase()}</div><div><strong>{player.name}</strong><small>{player.host ? 'Власник кімнати' : player.ready ? 'Готовий грати' : 'Ще думає'}</small></div><span className={player.ready ? 'ready yes' : 'ready'}>{player.ready ? 'ГОТОВИЙ' : 'НЕ ГОТОВИЙ'}</span></motion.article>)}
             {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => <article className="emptyPlayer" key={i}><div className="avatar"><Plus/></div><div><strong>Вільне місце</strong><small>Надішли код другу</small></div></article>)}
           </div>
-          <aside className="roomActions"><div className="insideRoomSettings"><span>НАЛАШТУВАННЯ ГРИ</span><label>Віковий режим<select value={room.ageGroup} disabled={host?.id !== user.id} onChange={async e => { const ageGroup=e.target.value as AgeGroup; setAgeGroup(ageGroup); setRoom((await api.updateRoom(room.code,{ageGroup,boardSize:room.boardSize})).room) }}><option value="10-12">10–12 років</option><option value="14-15">14–15 років</option><option value="18-20">18–20 років</option></select></label><label>Розмір карти<select value={room.boardSize} disabled={host?.id !== user.id} onChange={async e => { const boardSize=e.target.value as BoardSize; setBoardSize(boardSize); setRoom((await api.updateRoom(room.code,{ageGroup:room.ageGroup,boardSize})).room) }}><option value="standard">Стандартна, 40 клітинок</option><option value="large">Велика, 56 клітинок</option></select></label></div><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => setGameStarted(true)} disabled={!host || host.id !== user.id}>Почати тестову гру<ArrowRight/></button><small>{host?.id === user.id ? 'Тестовий режим: можна почати навіть одному.' : 'Власник кімнати може почати гру.'}</small></aside>
+          <aside className="roomActions"><div className="insideRoomSettings"><span>НАЛАШТУВАННЯ ГРИ</span><label>Розмір карти<select value={room.boardSize} disabled={host?.id !== user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:e.target.value as BoardSize,turnSeconds:room.turnSeconds,decisionSeconds:room.decisionSeconds})).room)}><option value="standard">Стандартна, 40 клітинок</option><option value="large">Велика, 56 клітинок</option></select></label><label>Час на хід<select value={room.turnSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:Number(e.target.value),decisionSeconds:room.decisionSeconds})).room)}><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option><option value="90">90 секунд</option></select></label><label>Час на рішення<select value={room.decisionSeconds} disabled={host?.id!==user.id} onChange={async e=>setRoom((await api.updateRoom(room.code,{boardSize:room.boardSize,turnSeconds:room.turnSeconds,decisionSeconds:Number(e.target.value)})).room)}><option value="20">20 секунд</option><option value="30">30 секунд</option><option value="45">45 секунд</option><option value="60">60 секунд</option></select></label></div><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => setGameStarted(true)} disabled={!host || host.id !== user.id}>Почати тестову гру<ArrowRight/></button><small>{host?.id === user.id ? 'Тестовий режим: можна почати навіть одному.' : 'Власник кімнати може почати гру.'}</small></aside>
         </div>
       </motion.section>
     </main>

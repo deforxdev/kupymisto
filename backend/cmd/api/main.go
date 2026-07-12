@@ -38,17 +38,32 @@ type ChanceCard struct {
 	Nonce   int64  `json:"nonce"`
 	DrawnBy string `json:"drawnBy"`
 }
+type Trade struct {
+	ID        string    `json:"id"`
+	From      string    `json:"from"`
+	To        string    `json:"to"`
+	GiveCell  int       `json:"giveCell"`
+	WantCell  int       `json:"wantCell"`
+	GiveMoney int       `json:"giveMoney"`
+	WantMoney int       `json:"wantMoney"`
+	Status    string    `json:"status"`
+	ExpiresAt time.Time `json:"expiresAt"`
+}
 type Room struct {
-	Code          string            `json:"code"`
-	Name          string            `json:"name"`
-	MaxPlayers    int               `json:"maxPlayers"`
-	AgeGroup      string            `json:"ageGroup"`
-	BoardSize     string            `json:"boardSize"`
-	Ownership     map[string]string `json:"ownership"`
-	Houses        map[string]int    `json:"houses"`
-	CurrentChance *ChanceCard       `json:"currentChance,omitempty"`
-	Players       []Player          `json:"players"`
-	CreatedAt     time.Time         `json:"createdAt"`
+	Code            string            `json:"code"`
+	Name            string            `json:"name"`
+	MaxPlayers      int               `json:"maxPlayers"`
+	AgeGroup        string            `json:"ageGroup"`
+	BoardSize       string            `json:"boardSize"`
+	Ownership       map[string]string `json:"ownership"`
+	Balances        map[string]int    `json:"balances"`
+	Trades          []Trade           `json:"trades"`
+	TurnSeconds     int               `json:"turnSeconds"`
+	DecisionSeconds int               `json:"decisionSeconds"`
+	Houses          map[string]int    `json:"houses"`
+	CurrentChance   *ChanceCard       `json:"currentChance,omitempty"`
+	Players         []Player          `json:"players"`
+	CreatedAt       time.Time         `json:"createdAt"`
 }
 type Store struct {
 	mu       sync.RWMutex
@@ -192,16 +207,17 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
 	protected.HandleFunc("PATCH /api/rooms/{code}/settings", func(w http.ResponseWriter, r *http.Request) {
 		var in struct {
-			AgeGroup  string `json:"ageGroup"`
-			BoardSize string `json:"boardSize"`
+			BoardSize       string `json:"boardSize"`
+			TurnSeconds     int    `json:"turnSeconds"`
+			DecisionSeconds int    `json:"decisionSeconds"`
 		}
-		if readJSON(r, &in) != nil || !validAgeGroup(in.AgeGroup) || (in.BoardSize != "standard" && in.BoardSize != "large") {
+		if readJSON(r, &in) != nil || (in.BoardSize != "standard" && in.BoardSize != "large") || in.TurnSeconds < 30 || in.TurnSeconds > 90 || in.DecisionSeconds < 20 || in.DecisionSeconds > 60 {
 			fail(w, 400, "Некоректні налаштування гри")
 			return
 		}
@@ -225,8 +241,9 @@ func main() {
 			fail(w, 403, "Налаштування змінює власник кімнати")
 			return
 		}
-		room.AgeGroup = in.AgeGroup
 		room.BoardSize = in.BoardSize
+		room.TurnSeconds = in.TurnSeconds
+		room.DecisionSeconds = in.DecisionSeconds
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/join", func(w http.ResponseWriter, r *http.Request) {
@@ -250,6 +267,12 @@ func main() {
 			return
 		}
 		room.Players = append(room.Players, Player{ID: user.ID, Name: user.Name})
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		if _, ok := room.Balances[user.ID]; !ok {
+			room.Balances[user.ID] = 1500
+		}
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("GET /api/rooms/{code}", func(w http.ResponseWriter, r *http.Request) {
@@ -263,6 +286,107 @@ func main() {
 			return
 		}
 		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/trades", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			To        string `json:"to"`
+			GiveCell  int    `json:"giveCell"`
+			WantCell  int    `json:"wantCell"`
+			GiveMoney int    `json:"giveMoney"`
+			WantMoney int    `json:"wantMoney"`
+		}
+		if readJSON(r, &in) != nil || in.GiveMoney < 0 || in.WantMoney < 0 {
+			fail(w, 400, "Некоректна угода")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		u := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, u.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		if in.GiveCell >= 0 && room.Ownership[strconv.Itoa(in.GiveCell)] != u.ID {
+			fail(w, 403, "Ця клітинка не твоя")
+			return
+		}
+		if in.WantCell >= 0 && room.Ownership[strconv.Itoa(in.WantCell)] != in.To {
+			fail(w, 409, "Клітинка вже не належить гравцю")
+			return
+		}
+		if room.Balances[u.ID] < in.GiveMoney {
+			fail(w, 409, "Недостатньо коштів для пропозиції")
+			return
+		}
+		trade := Trade{ID: randomString(10, codeAlphabet), From: u.ID, To: in.To, GiveCell: in.GiveCell, WantCell: in.WantCell, GiveMoney: in.GiveMoney, WantMoney: in.WantMoney, Status: "pending", ExpiresAt: time.Now().Add(time.Duration(max(room.DecisionSeconds, 20)) * time.Second)}
+		room.Trades = append(room.Trades, trade)
+		writeJSON(w, 201, map[string]any{"room": room})
+	})
+	protected.HandleFunc("PATCH /api/rooms/{code}/trades/{id}", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			Accept bool `json:"accept"`
+		}
+		if readJSON(r, &in) != nil {
+			fail(w, 400, "Некоректна відповідь")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		u := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		for i := range room.Trades {
+			t := &room.Trades[i]
+			if t.ID != r.PathValue("id") {
+				continue
+			}
+			if t.To != u.ID || t.Status != "pending" {
+				fail(w, 403, "Угода недоступна")
+				return
+			}
+			if !in.Accept {
+				t.Status = "rejected"
+				writeJSON(w, 200, map[string]any{"room": room})
+				return
+			}
+			if time.Now().After(t.ExpiresAt) || room.Balances[t.From] < t.GiveMoney || room.Balances[t.To] < t.WantMoney {
+				t.Status = "rejected"
+				fail(w, 409, "Угода прострочена або баланс змінився")
+				return
+			}
+			if t.GiveCell >= 0 && room.Ownership[strconv.Itoa(t.GiveCell)] != t.From {
+				fail(w, 409, "Власність змінилась")
+				return
+			}
+			if t.WantCell >= 0 && room.Ownership[strconv.Itoa(t.WantCell)] != t.To {
+				fail(w, 409, "Власність змінилась")
+				return
+			}
+			room.Balances[t.From] += t.WantMoney - t.GiveMoney
+			room.Balances[t.To] += t.GiveMoney - t.WantMoney
+			if t.GiveCell >= 0 {
+				room.Ownership[strconv.Itoa(t.GiveCell)] = t.To
+			}
+			if t.WantCell >= 0 {
+				room.Ownership[strconv.Itoa(t.WantCell)] = t.From
+			}
+			t.Status = "accepted"
+			writeJSON(w, 200, map[string]any{"room": room})
+			return
+		}
+		fail(w, 404, "Угоду не знайдено")
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/bad-luck", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
@@ -284,7 +408,11 @@ func main() {
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
 		room.CurrentChance = &card
+		room.Balances[user.ID] += card.Amount
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
@@ -306,7 +434,11 @@ func main() {
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
 		room.CurrentChance = &card
+		room.Balances[user.ID] += card.Amount
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("DELETE /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
@@ -354,6 +486,14 @@ func main() {
 			fail(w, 409, "На клітинці вже максимум будинків")
 			return
 		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		if room.Balances[user.ID] < 100 {
+			fail(w, 409, "Недостатньо коштів")
+			return
+		}
+		room.Balances[user.ID] -= 100
 		room.Houses[key]++
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
@@ -383,6 +523,14 @@ func main() {
 			fail(w, 409, "Ця клітинка вже має власника")
 			return
 		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
+		if room.Balances[user.ID] < in.Price {
+			fail(w, 409, "Недостатньо коштів")
+			return
+		}
+		room.Balances[user.ID] -= in.Price
 		room.Ownership[key] = user.ID
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
