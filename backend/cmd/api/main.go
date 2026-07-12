@@ -611,6 +611,9 @@ func main() {
 		if len(room.Positions) != len(room.Players) {
 			room.Positions = make([]int, len(room.Players))
 		}
+		if room.Balances == nil {
+			room.Balances = map[string]int{}
+		}
 		boardCells := 40
 		if room.BoardSize == "large" {
 			boardCells = 56
