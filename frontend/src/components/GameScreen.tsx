@@ -19,6 +19,7 @@ export default function GameScreen({ room, user, onExit }: Props) {
   const [liveRoom,setLiveRoom] = useState(room)
   const [chanceEvent,setChanceEvent] = useState<ChanceEvent|null>(room.currentChance||null)
   const [chancePending,setChancePending] = useState(false)
+  const [badLuckPending,setBadLuckPending] = useState(false)
   const [drawNonce,setDrawNonce] = useState(room.currentChance?.nonce||0)
   const [skippedTurns,setSkippedTurns] = useState<Record<string,number>>({})
   const [balance,setBalance] = useState(1500)
@@ -101,12 +102,11 @@ export default function GameScreen({ room, user, onExit }: Props) {
               setChancePending(true)
               setPhase('decision')
             }
-            if (landed.name==='РЕМОНТ ДОРІГ') {
-              setBalance(value=>value-100)
-              setMeme('Ремонт доріг: міський бюджет просить 100 ₴. Баланс може піти в мінус.')
-              window.setTimeout(()=>setMeme(''),2800)
+            if (landed.name==='ХАЛЕПА') {
+              setBadLuckPending(true)
+              setPhase('decision')
             }
-            if(landed.kind!=='chance')finishTurn()
+            if(landed.kind!=='chance'&&landed.kind!=='tax')finishTurn()
           }
         },Math.max(900,(a+b)*190+260))
       }, 1000)
@@ -118,6 +118,21 @@ export default function GameScreen({ room, user, onExit }: Props) {
     await unlockAudio()
     setChancePending(false)
     const {room:nextRoom}=await api.drawChance(room.code)
+    setLiveRoom(nextRoom)
+    if(nextRoom.currentChance){
+      setDrawNonce(nextRoom.currentChance.nonce)
+      window.setTimeout(()=>{
+        setChanceEvent(nextRoom.currentChance||null)
+        setBalance(value=>value+(nextRoom.currentChance?.amount||0))
+      },1100)
+    }
+  }
+
+  const drawBadLuck=async()=>{
+    if(!badLuckPending)return
+    await unlockAudio()
+    setBadLuckPending(false)
+    const {room:nextRoom}=await api.drawBadLuck(room.code)
     setLiveRoom(nextRoom)
     if(nextRoom.currentChance){
       setDrawNonce(nextRoom.currentChance.nonce)
@@ -153,6 +168,7 @@ export default function GameScreen({ room, user, onExit }: Props) {
       {players.slice(0,6).map((player,index)=><div key={player.id} className={`cornerPlayer corner${index+1} ${turn===index?'current':''}`}>
         <div className={`cornerAvatar ${colors[index]}`}>{player.name.slice(0,1).toUpperCase()}<i/></div><span><strong>{player.name}</strong><small>{turn===index?'Зараз ходить':'1500 ₴'}</small></span>
       </div>)}
+      <AnimatePresence>{badLuckPending&&<motion.div className="chanceDrawPrompt badLuckPrompt" initial={{opacity:0,y:18,scale:.92}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-14}}><small>ТИ СТАВ НА «ХАЛЕПУ»</small><strong>Витягни погану картку</strong><p>У цій колоді бонусів немає.</p><button onClick={drawBadLuck}>Дізнатися, що сталося</button></motion.div>}</AnimatePresence>
       <AnimatePresence>{chancePending&&<motion.div className="chanceDrawPrompt" initial={{opacity:0,y:18,scale:.92}} animate={{opacity:1,y:0,scale:1}} exit={{opacity:0,y:-14}}><small>ТИ СТАВ НА «ШАНС»</small><strong>Витягни верхню картку</strong><button onClick={drawChance}>Витягнути картку</button></motion.div>}</AnimatePresence>
       <div className="diceAction"><span>{dice[0]} + {dice[1]}</span><button onClick={roll} disabled={rolling||phase!=='roll'||players[turn]?.id!==user.id}>{rolling?'Кубики летять':'Кинути кубики'}</button></div>
       <AnimatePresence>{chanceEvent&&<ChanceCard event={chanceEvent} onContinue={()=>{const mine=chanceEvent?.drawnBy===user.id;setChanceEvent(null);if(mine){api.clearChance(room.code).then(({room})=>setLiveRoom(room)).catch(()=>null);finishTurn()}}}/>}</AnimatePresence>
@@ -160,7 +176,7 @@ export default function GameScreen({ room, user, onExit }: Props) {
       <AnimatePresence>{cardOpen&&<motion.aside className="propertyPanel" initial={{opacity:0,x:60}} animate={{opacity:1,x:0}} exit={{opacity:0,x:70}} transition={{duration:.36,ease:[.16,1,.3,1]}}>
         <button className="propertyClose" onClick={()=>setCardOpen(false)} aria-label="Закрити картку"><X/></button>
         <div className="propertyBand" style={{background:selected.color}}/>
-        <span className="propertyType">{selected.kind==='city'?'МІСЬКА ВЛАСНІСТЬ':selected.kind==='station'?'ТРАНСПОРТ':selected.kind==='chance'?'ПОДІЯ':selected.kind==='tax'?'МІСЬКИЙ ЗБІР':'КУТОВА КЛІТИНКА'}</span>
+        <span className="propertyType">{selected.kind==='city'?'МІСЬКА ВЛАСНІСТЬ':selected.kind==='station'?'ТРАНСПОРТ':selected.kind==='chance'?'ПОДІЯ':selected.kind==='tax'?'КОЛОДА ХАЛЕПИ':'КУТОВА КЛІТИНКА'}</span>
         <h2>{selected.name}</h2>
         {selected.kind==='city'&&<>
           <div className="propertyPrice"><span>Ціна ділянки</span><strong>{selected.price} ₴</strong></div>

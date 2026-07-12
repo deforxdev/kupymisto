@@ -35,6 +35,7 @@ export const api = {
   updateRoom: (code: string, body: { ageGroup: AgeGroup; boardSize: BoardSize }) => request<{ room: Room }>(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   joinRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/join`, { method: 'POST' }),
   getRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}`),
+  drawBadLuck: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/bad-luck`, { method:'POST' }),
   drawChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'POST' }),
   clearChance: (code:string) => request<{ room:Room }>(`/api/rooms/${code}/chance`, { method:'DELETE' }),
   buildHouse: (code:string, body:{ cellIndex:number }) => request<{ room:Room }>(`/api/rooms/${code}/houses`, { method:'POST', body:JSON.stringify(body) }),

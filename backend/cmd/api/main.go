@@ -264,6 +264,29 @@ func main() {
 		}
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
+	protected.HandleFunc("POST /api/rooms/{code}/bad-luck", func(w http.ResponseWriter, r *http.Request) {
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		deck := []ChanceCard{
+			{ID: "coffee-flood", Title: "Кава пішла не туди", Text: "Лате вирішило стати частиною ноутбука. Ремонт техніки коштує грошей.", Amount: -140, Art: "fire"},
+			{ID: "bus-fine", Title: "Бус приїхав без тебе", Text: "Довелося брати таксі через усе місто. Списуємо дорожні витрати.", Amount: -90, Art: "bus"},
+			{ID: "rich-audit", Title: "Із багатої, але є нюанс", Text: "Банк попросив пояснити походження мемних доходів. Комісія вже списана.", Amount: -120, Art: "rich"},
+			{ID: "owl-night", Title: "Сова не спала", Text: "Нічна руханка сусідів закінчилася штрафом за шум.", Amount: -70, Art: "owl"},
+			{ID: "roads", Title: "Асфальт зійшов разом зі снігом", Text: "Район скидається на терміновий ремонт дороги.", Amount: -110, Art: "fire"},
+		}
+		card := deck[time.Now().UnixNano()%int64(len(deck))]
+		card.Nonce = time.Now().UnixNano()
+		card.DrawnBy = user.ID
+		room.CurrentChance = &card
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
 	protected.HandleFunc("POST /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
 		user := mustUser(r)
