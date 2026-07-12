@@ -609,7 +609,11 @@ func main() {
 		}
 		a, b := mathrand.Intn(6)+1, mathrand.Intn(6)+1
 		room.Dice = [2]int{a, b}
-		room.Positions[room.Turn] = (room.Positions[room.Turn] + a + b) % boardCells
+		previousPosition := room.Positions[room.Turn]
+		if previousPosition+a+b >= boardCells {
+			room.Balances[user.ID] += 200
+		}
+		room.Positions[room.Turn] = (previousPosition + a + b) % boardCells
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {

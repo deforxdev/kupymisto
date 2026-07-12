@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Copy, DoorOpen, LogOut, Plus, Users, X } from 'lucide-react'
 import { api, clearActiveRoomCode, clearToken, getActiveRoomCode, setActiveRoomCode, type BoardSize, type Room, type User } from '../api'
@@ -17,6 +17,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+  const ignoreStarted = useRef(false)
 
   useEffect(() => {
     const activeRoomCode = getActiveRoomCode()
@@ -39,7 +40,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
       try {
         const nextRoom = (await api.getRoom(room.code)).room
         setRoom(nextRoom)
-        if (nextRoom.started) setGameStarted(true)
+        if (nextRoom.started && !ignoreStarted.current) setGameStarted(true)
       } catch { /* room may be closing */ }
     }, 2500)
     return () => window.clearInterval(timer)
@@ -72,7 +73,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   }
   const logout = () => { clearToken(); onLogout() }
 
-  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { clearActiveRoomCode(); setGameStarted(false) }} />
+  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { ignoreStarted.current = true; clearActiveRoomCode(); setGameStarted(false) }} />
 
   if (room) {
     const me = room.players.find(player => player.id === user.id)
