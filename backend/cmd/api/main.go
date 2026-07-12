@@ -518,7 +518,11 @@ func main() {
 			fail(w, 403, "Будувати може лише власник")
 			return
 		}
-		if room.Houses[key] >= 3 {
+		maxHouses := 3
+		if ownsCompletePropertyGroup(room, user.ID, in.CellIndex) {
+			maxHouses = 5
+		}
+		if room.Houses[key] >= maxHouses {
 			fail(w, 409, "На клітинці вже максимум будинків")
 			return
 		}
@@ -795,8 +799,8 @@ func main() {
 			CellIndex int `json:"cellIndex"`
 			Count     int `json:"count"`
 		}
-		if readJSON(r, &in) != nil || in.CellIndex < 0 || in.Count < 0 || in.Count > 3 {
-			fail(w, 400, "Кількість будинків має бути від 0 до 3")
+		if readJSON(r, &in) != nil || in.CellIndex < 0 || in.Count < 0 || in.Count > 5 {
+			fail(w, 400, "Кількість будинків має бути від 0 до 5")
 			return
 		}
 		code := strings.ToUpper(r.PathValue("code"))
@@ -810,6 +814,14 @@ func main() {
 		key := strconv.Itoa(in.CellIndex)
 		if _, property := propertyPrice(room.BoardSize, in.CellIndex); !property || room.Ownership[key] == "" {
 			fail(w, 400, "Будинки можна додавати лише на власну міську клітинку")
+			return
+		}
+		maxHouses := 3
+		if ownsCompletePropertyGroup(room, room.Ownership[key], in.CellIndex) {
+			maxHouses = 5
+		}
+		if in.Count > maxHouses {
+			fail(w, 400, "5 будинків можна ставити лише на всі клітинки одного кольору")
 			return
 		}
 		if room.Houses == nil {
@@ -936,6 +948,56 @@ func propertyPrice(boardSize string, index int) (int, bool) {
 		city++
 	}
 	return 100 + (city%9)*30, true
+}
+
+func propertyGroup(boardSize string, index int) (int, bool) {
+	side := 11
+	if boardSize == "large" {
+		side = 15
+	}
+	_, property := propertyPrice(boardSize, index)
+	if !property {
+		return 0, false
+	}
+	if index%(side-1) == 5 {
+		return -1, true
+	}
+	city := 0
+	for current := 0; current <= index; current++ {
+		currentLane := current % (side - 1)
+		if currentLane == 0 || current == side-3 || currentLane == 3 || currentLane == 7 || currentLane == 5 {
+			continue
+		}
+		if current == index {
+			return city / 2, true
+		}
+		city++
+	}
+	return 0, false
+}
+
+func ownsCompletePropertyGroup(room *Room, playerID string, index int) bool {
+	group, ok := propertyGroup(room.BoardSize, index)
+	if !ok {
+		return false
+	}
+	side := 11
+	if room.BoardSize == "large" {
+		side = 15
+	}
+	total := side*4 - 4
+	found := false
+	for cell := 0; cell < total; cell++ {
+		cellGroup, isProperty := propertyGroup(room.BoardSize, cell)
+		if !isProperty || cellGroup != group {
+			continue
+		}
+		found = true
+		if room.Ownership[strconv.Itoa(cell)] != playerID {
+			return false
+		}
+	}
+	return found
 }
 
 func sanitizeRoomProperties(room *Room) {

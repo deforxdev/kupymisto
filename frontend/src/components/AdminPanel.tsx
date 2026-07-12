@@ -40,6 +40,8 @@ export default function AdminPanel({ room, adminId, onRoom, onClose }: AdminPane
   }
 
   const selectedOwner = room.ownership?.[String(cellIndex)]
+  const colorGroup = propertyCells.filter(({ cell }) => cell.color === cells[cellIndex]?.color)
+  const maxHouses = selectedOwner && colorGroup.length > 0 && colorGroup.every(({ index }) => room.ownership?.[String(index)] === selectedOwner) ? 5 : 3
   const selectCell = (value: string) => {
     const next = Number(value)
     setCellIndex(next)
@@ -78,7 +80,7 @@ export default function AdminPanel({ room, adminId, onRoom, onClose }: AdminPane
       <section className="adminSection">
         <strong>Будинки</strong>
         <select value={houseCount} onChange={(event) => setHouseCount(Number(event.target.value))}>
-          {[0, 1, 2, 3].map((count) => <option value={count} key={count}>{count} будинків</option>)}
+          {[0, 1, 2, 3, 4, 5].filter((count) => count <= maxHouses).map((count) => <option value={count} key={count}>{count} будинків</option>)}
         </select>
         <motion.button className="adminPrimary adminWide" {...buttonMotion} disabled={!selectedOwner} onClick={() => void run(() => api.adminSetHouses(room.code, { cellIndex, count: houseCount }), selectedOwner ? 'Кількість будинків змінено' : 'Спочатку дай клітинку гравцю')}>Застосувати будинки</motion.button>
       </section>
