@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Copy, DoorOpen, LogOut, Plus, Users, X } from 'lucide-react'
-import { api, clearToken, type BoardSize, type Room, type User } from '../api'
+import { api, clearActiveRoomCode, clearToken, getActiveRoomCode, setActiveRoomCode, type BoardSize, type Room, type User } from '../api'
 import GameScreen from './GameScreen'
 import { playUiSound } from '../audio'
 
@@ -17,6 +17,21 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    const activeRoomCode = getActiveRoomCode()
+    if (!activeRoomCode) return
+    api.getRoom(activeRoomCode)
+      .then(({ room: restoredRoom }) => {
+        setRoom(restoredRoom)
+        setGameStarted(true)
+      })
+      .catch(() => clearActiveRoomCode())
+  }, [])
+
+  useEffect(() => {
+    if (room && gameStarted) setActiveRoomCode(room.code)
+  }, [room, gameStarted])
 
   useEffect(() => {
     if (!room) return
@@ -36,10 +51,10 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const createRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.createRoom({ name: roomName.trim(), maxPlayers })) }
   const joinRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.joinRoom(joinCode.replace(/[^a-z0-9]/gi, '').toUpperCase())) }
   const copyCode = async () => { if (!room) return; await navigator.clipboard.writeText(room.code); setCopied(true); playUiSound('select'); window.setTimeout(() => setCopied(false), 1600) }
-  const leave = async () => { if (!room) return; await api.leaveRoom(room.code).catch(() => null); setRoom(null) }
+  const leave = async () => { if (!room) return; await api.leaveRoom(room.code).catch(() => null); clearActiveRoomCode(); setRoom(null) }
   const logout = () => { clearToken(); onLogout() }
 
-  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => setGameStarted(false)} />
+  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { clearActiveRoomCode(); setGameStarted(false) }} />
 
   if (room) {
     const me = room.players.find(player => player.id === user.id)
@@ -51,7 +66,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
           <div><span className="sectionNo">ПРИВАТНА КІМНАТА</span><h1>{room.name}</h1><p>Гравці заходять напряму за кодом. Ніякого пошуку в загальному списку.</p></div>
           <button className="roomCode" onClick={copyCode} aria-label="Скопіювати код кімнати"><small>КОД ДЛЯ ВХОДУ</small><strong>{room.code}</strong><span>{copied ? <Check/> : <Copy/>}{copied ? 'Скопійовано' : 'Скопіювати'}</span></button>
         </div>
-        <div className="roomContent">
+          <div className="roomContent">
           <div className="playersList"><div className="listTitle"><h2>Гравці</h2><span>{room.players.length}/{room.maxPlayers}</span></div>
             {room.players.map((player, index) => <motion.article key={player.id} initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * .06 }}><div className={`avatar avatar${index % 4}`}>{player.name.slice(0, 1).toUpperCase()}</div><div><strong>{player.name}</strong><small>{player.host ? 'Власник кімнати' : player.ready ? 'Готовий грати' : 'Ще думає'}</small></div><span className={player.ready ? 'ready yes' : 'ready'}>{player.ready ? 'ГОТОВИЙ' : 'НЕ ГОТОВИЙ'}</span></motion.article>)}
             {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => <article className="emptyPlayer" key={i}><div className="avatar"><Plus/></div><div><strong>Вільне місце</strong><small>Надішли код другу</small></div></article>)}

@@ -580,7 +580,7 @@ func main() {
 	mux.Handle("/api/auth/me", auth(store, protected))
 	mux.Handle("/api/rooms", auth(store, protected))
 	mux.Handle("/api/rooms/", auth(store, protected))
-	server := &http.Server{Addr: ":8080", Handler: securityHeaders(persisting(store, mux)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: ":8080", Handler: securityHeaders(cors(persisting(store, mux))), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Println("Kupymisto API listening on :8080")
 	log.Fatal(server.ListenAndServe())
 }
@@ -663,6 +663,27 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}
+
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		origin := r.Header.Get("Origin")
+		allowedOrigin := os.Getenv("FRONTEND_URL")
+		if allowedOrigin == "" {
+			allowedOrigin = origin
+		}
+		if origin != "" && origin == allowedOrigin {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Vary", "Origin")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
+		}
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
 }

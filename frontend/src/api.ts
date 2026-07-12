@@ -9,13 +9,18 @@ export type Room = { code: string; name: string; maxPlayers: number; ageGroup: A
 type ApiError = { error?: string }
 
 const TOKEN_KEY = 'kupymisto_token'
+const ACTIVE_ROOM_KEY = 'kupymisto_active_room'
+const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
 export const getToken = () => localStorage.getItem(TOKEN_KEY)
 export const setToken = (token: string) => localStorage.setItem(TOKEN_KEY, token)
 export const clearToken = () => localStorage.removeItem(TOKEN_KEY)
+export const getActiveRoomCode = () => localStorage.getItem(ACTIVE_ROOM_KEY)
+export const setActiveRoomCode = (code: string) => localStorage.setItem(ACTIVE_ROOM_KEY, code)
+export const clearActiveRoomCode = () => localStorage.removeItem(ACTIVE_ROOM_KEY)
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const token = getToken()
-  const response = await fetch(path, {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
       'Content-Type': 'application/json',

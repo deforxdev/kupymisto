@@ -36,3 +36,11 @@ The real `.env` is ignored by Git. Never commit database passwords or service-ro
 
 Frontend: http://localhost:5173
 API healthcheck: http://localhost:8080/api/health
+
+## Deploy backend on Render
+
+1. In Render choose **New → Blueprint** and select this repository.
+2. Render will read `render.yaml` and create `kupymisto-api`.
+3. Add `DATABASE_URL` with the Supabase pooler connection string.
+4. After deploying, set the Vercel frontend variable `VITE_API_URL` to the Render URL.
+5. Set Render's `FRONTEND_URL` to the Vercel URL and redeploy the backend.

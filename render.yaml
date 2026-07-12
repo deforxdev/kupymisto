@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: kupymisto-api
+    runtime: go
+    plan: free
+    buildCommand: cd backend && go build -o ../bin/kupymisto-api ./cmd/api
+    startCommand: ./bin/kupymisto-api
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
