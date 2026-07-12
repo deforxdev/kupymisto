@@ -66,3 +66,41 @@ export function stopAmbience() {
   }, 220)
   ambience = null
 }
+
+export function playDiceRoll() {
+  const ctx = getContext()
+  const start = ctx.currentTime
+  ;[0, .07, .13, .21, .30, .40, .51, .63].forEach((delay, index) => {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const filter = ctx.createBiquadFilter()
+    oscillator.type = index % 2 ? 'triangle' : 'square'
+    oscillator.frequency.value = 105 + Math.random() * 85
+    filter.type = 'lowpass'
+    filter.frequency.value = 720 + Math.random() * 500
+    const time = start + delay
+    gain.gain.setValueAtTime(.0001, time)
+    gain.gain.exponentialRampToValueAtTime(.045 * (1 - index / 12), time + .006)
+    gain.gain.exponentialRampToValueAtTime(.0001, time + .055)
+    oscillator.connect(filter).connect(gain).connect(ctx.destination)
+    oscillator.start(time); oscillator.stop(time + .065)
+  })
+}
+
+export function playPawnMove(steps: number) {
+  const ctx = getContext()
+  const start = ctx.currentTime
+  const count = Math.min(steps, 12)
+  for (let index = 0; index < count; index++) {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const time = start + index * .075
+    oscillator.type = 'sine'
+    oscillator.frequency.value = 210 + (index % 3) * 35
+    gain.gain.setValueAtTime(.0001, time)
+    gain.gain.exponentialRampToValueAtTime(.035, time + .008)
+    gain.gain.exponentialRampToValueAtTime(.0001, time + .045)
+    oscillator.connect(gain).connect(ctx.destination)
+    oscillator.start(time); oscillator.stop(time + .055)
+  }
+}
