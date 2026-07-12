@@ -1,6 +1,7 @@
 export type User = { id: string; name: string; email: string }
 export type Player = { id: string; name: string; host: boolean; ready: boolean }
-export type Room = { code: string; name: string; maxPlayers: number; players: Player[]; createdAt: string }
+export type AgeGroup = '10-12' | '14-15' | '18-20'
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; players: Player[]; createdAt: string }
 
 type ApiError = { error?: string }
 
@@ -28,7 +29,7 @@ export const api = {
   register: (body: { name: string; email: string; password: string }) => request<{ token: string; user: User }>('/api/auth/register', { method: 'POST', body: JSON.stringify(body) }),
   login: (body: { email: string; password: string }) => request<{ token: string; user: User }>('/api/auth/login', { method: 'POST', body: JSON.stringify(body) }),
   me: () => request<{ user: User }>('/api/auth/me'),
-  createRoom: (body: { name: string; maxPlayers: number }) => request<{ room: Room }>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
+  createRoom: (body: { name: string; maxPlayers: number; ageGroup: AgeGroup }) => request<{ room: Room }>('/api/rooms', { method: 'POST', body: JSON.stringify(body) }),
   joinRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/join`, { method: 'POST' }),
   getRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}`),
   toggleReady: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/ready`, { method: 'POST' }),
