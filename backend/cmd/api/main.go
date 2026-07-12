@@ -764,6 +764,34 @@ func propertyPrice(boardSize string, index int) (int, bool) {
 	return 100 + (city%9)*30, true
 }
 
+func sanitizeRoomProperties(room *Room) {
+	if room == nil {
+		return
+	}
+	if room.Ownership == nil {
+		room.Ownership = map[string]string{}
+	}
+	if room.Houses == nil {
+		room.Houses = map[string]int{}
+	}
+	for key := range room.Ownership {
+		index, err := strconv.Atoi(key)
+		if err != nil {
+			delete(room.Ownership, key)
+			continue
+		}
+		if _, isProperty := propertyPrice(room.BoardSize, index); !isProperty {
+			delete(room.Ownership, key)
+			delete(room.Houses, key)
+		}
+	}
+	for key := range room.Houses {
+		if _, owned := room.Ownership[key]; !owned {
+			delete(room.Houses, key)
+		}
+	}
+}
+
 func cornerReward(boardSize string, index int) int {
 	side := 11
 	if boardSize == "large" {

@@ -88,6 +88,7 @@ func newStore(ctx context.Context) (*Store, error) {
 			if room != nil && room.TurnDeadline.IsZero() {
 				room.TurnDeadline = time.Now().Add(time.Duration(max(room.TurnSeconds, 60)) * time.Second)
 			}
+			sanitizeRoomProperties(room)
 		}
 		log.Println("Loaded Kupymisto state from Supabase")
 	} else if !errors.Is(err, pgx.ErrNoRows) {
