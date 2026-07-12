@@ -33,6 +33,7 @@ type Room struct {
 	Name       string    `json:"name"`
 	MaxPlayers int       `json:"maxPlayers"`
 	AgeGroup   string    `json:"ageGroup"`
+	BoardSize  string    `json:"boardSize"`
 	Players    []Player  `json:"players"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
@@ -158,14 +159,13 @@ func main() {
 		var in struct {
 			Name       string `json:"name"`
 			MaxPlayers int    `json:"maxPlayers"`
-			AgeGroup   string `json:"ageGroup"`
 		}
 		if readJSON(r, &in) != nil {
 			fail(w, 400, "Перевір налаштування кімнати")
 			return
 		}
 		in.Name = strings.TrimSpace(in.Name)
-		if len([]rune(in.Name)) < 3 || len([]rune(in.Name)) > 40 || in.MaxPlayers < 2 || in.MaxPlayers > 6 || !validAgeGroup(in.AgeGroup) {
+		if len([]rune(in.Name)) < 3 || len([]rune(in.Name)) > 40 || in.MaxPlayers < 2 || in.MaxPlayers > 6 {
 			fail(w, 400, "Некоректні налаштування кімнати")
 			return
 		}
@@ -179,9 +179,42 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: in.AgeGroup, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
+	})
+	protected.HandleFunc("PATCH /api/rooms/{code}/settings", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			AgeGroup  string `json:"ageGroup"`
+			BoardSize string `json:"boardSize"`
+		}
+		if readJSON(r, &in) != nil || !validAgeGroup(in.AgeGroup) || (in.BoardSize != "standard" && in.BoardSize != "large") {
+			fail(w, 400, "Некоректні налаштування гри")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		hostID := ""
+		for _, player := range room.Players {
+			if player.Host {
+				hostID = player.ID
+				break
+			}
+		}
+		if hostID == "" || hostID != user.ID {
+			fail(w, 403, "Налаштування змінює власник кімнати")
+			return
+		}
+		room.AgeGroup = in.AgeGroup
+		room.BoardSize = in.BoardSize
+		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/join", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
