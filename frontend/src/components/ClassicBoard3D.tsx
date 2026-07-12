@@ -1,7 +1,7 @@
 import { Canvas, useFrame, useThree } from '@react-three/fiber'
-import { ContactShadows, Environment, RoundedBox, Text } from '@react-three/drei'
+import { ContactShadows, RoundedBox, Text } from '@react-three/drei'
 import { useEffect, useMemo, useRef } from 'react'
-import type { Group, PerspectiveCamera } from 'three'
+import { ACESFilmicToneMapping, SRGBColorSpace, type Group, type PerspectiveCamera } from 'three'
 import type { BoardSize, Player } from '../api'
 
 export type BoardCell = { name:string; kind:'corner'|'city'|'chance'|'tax'|'station'; price?:number; color:string }
@@ -11,11 +11,45 @@ export function makeCells(size:BoardSize):BoardCell[]{const side=size==='large'?
 function boardPosition(index:number,side:number):[number,number,number]{const edge=side-1,half=edge/2;if(index<=edge)return[half-index,0,half];if(index<=edge*2)return[-half,0,half-(index-edge)];if(index<=edge*3)return[-half+(index-edge*2),0,-half];return[half,0,-half+(index-edge*3)]}
 
 function Token({index,side,color,offset}:{index:number;side:number;color:string;offset:number}){
-  const ref=useRef<Group>(null), previous=useRef(index), progress=useRef(1)
-  const from=useRef(boardPosition(index,side)), to=useRef(boardPosition(index,side))
-  useEffect(()=>{if(index===previous.current)return;from.current=boardPosition(previous.current,side);to.current=boardPosition(index,side);previous.current=index;progress.current=0},[index,side])
-  useFrame((_,delta)=>{if(!ref.current)return;progress.current=Math.min(1,progress.current+delta*1.45);const t=1-Math.pow(1-progress.current,3),a=from.current,b=to.current;ref.current.position.x=a[0]+(b[0]-a[0])*t+offset;ref.current.position.z=a[2]+(b[2]-a[2])*t+offset;ref.current.position.y=.48+Math.sin(progress.current*Math.PI*4)*Math.max(0,1-progress.current)*.32;ref.current.rotation.y+=delta*(progress.current<1?5:.25)})
-  return <group ref={ref} position={[from.current[0]+offset,.48,from.current[2]+offset]}><mesh position={[0,.28,0]} castShadow><sphereGeometry args={[.16,24,24]}/><meshStandardMaterial color={color} roughness={.3}/></mesh><mesh castShadow><coneGeometry args={[.28,.55,24]}/><meshStandardMaterial color={color} roughness={.36}/></mesh><mesh position={[0,-.29,0]} castShadow><cylinderGeometry args={[.31,.31,.09,24]}/><meshStandardMaterial color="#20202a"/></mesh></group>
+  const ref=useRef<Group>(null)
+  const total=side*4-4
+  const current=useRef(index)
+  const target=useRef(index)
+  const stepProgress=useRef(1)
+  const from=useRef(boardPosition(index,side))
+  const to=useRef(boardPosition(index,side))
+
+  useEffect(()=>{target.current=index},[index])
+  useFrame((_,delta)=>{
+    if(!ref.current)return
+    if(stepProgress.current>=1&&current.current!==target.current){
+      from.current=boardPosition(current.current,side)
+      current.current=(current.current+1)%total
+      to.current=boardPosition(current.current,side)
+      stepProgress.current=0
+    }
+    if(stepProgress.current<1){
+      stepProgress.current=Math.min(1,stepProgress.current+delta*5.25)
+      const raw=stepProgress.current
+      const t=raw*raw*(3-2*raw)
+      const a=from.current,b=to.current
+      ref.current.position.x=a[0]+(b[0]-a[0])*t+offset
+      ref.current.position.z=a[2]+(b[2]-a[2])*t+offset
+      ref.current.position.y=.5+Math.sin(raw*Math.PI)*.34
+      ref.current.rotation.y+=delta*4.8
+    }else{
+      const point=boardPosition(current.current,side)
+      ref.current.position.x=point[0]+offset
+      ref.current.position.z=point[2]+offset
+      ref.current.position.y=.5
+    }
+  })
+  const initial=boardPosition(index,side)
+  return <group ref={ref} position={[initial[0]+offset,.5,initial[2]+offset]}>
+    <mesh position={[0,.28,0]} castShadow><sphereGeometry args={[.16,24,24]}/><meshStandardMaterial color={color} roughness={.48} metalness={.04}/></mesh>
+    <mesh castShadow><coneGeometry args={[.28,.55,24]}/><meshStandardMaterial color={color} roughness={.52}/></mesh>
+    <mesh position={[0,-.29,0]} castShadow><cylinderGeometry args={[.31,.31,.09,24]}/><meshStandardMaterial color="#24212b" roughness={.58}/></mesh>
+  </group>
 }
 
 const pipMap:Record<number,[number,number][]>={1:[[0,0]],2:[[-1,1],[1,-1]],3:[[-1,1],[0,0],[1,-1]],4:[[-1,1],[1,1],[-1,-1],[1,-1]],5:[[-1,1],[1,1],[0,0],[-1,-1],[1,-1]],6:[[-1,1],[-1,0],[-1,-1],[1,1],[1,0],[1,-1]]}
@@ -32,6 +66,6 @@ function BoardModel({size,positions,players,dice,rolling}:{size:BoardSize;positi
   const group=useRef<Group>(null),drag=useRef({active:false,x:0,y:0,targetX:-.04,targetY:0}),zoom=useRef(size==='large'?18.5:16.2),{gl,camera}=useThree(),cells=useMemo(()=>makeCells(size),[size]),side=size==='large'?15:11,edge=side-1,boardWidth=edge+1.7,playerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44']
   useEffect(()=>{const canvas=gl.domElement,context=(e:MouseEvent)=>e.preventDefault(),down=(e:PointerEvent)=>{if(e.button!==2)return;e.preventDefault();drag.current.active=true;drag.current.x=e.clientX;drag.current.y=e.clientY;canvas.setPointerCapture?.(e.pointerId);canvas.classList.add('isRotating')},move=(e:PointerEvent)=>{if(!drag.current.active||(e.buttons&2)!==2)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;drag.current.x=e.clientX;drag.current.y=e.clientY;drag.current.targetY+=dx*.008;drag.current.targetX=Math.max(-.38,Math.min(.32,drag.current.targetX+dy*.005))},up=(e:PointerEvent)=>{if(e.button!==2)return;drag.current.active=false;canvas.releasePointerCapture?.(e.pointerId);canvas.classList.remove('isRotating')},wheel=(e:WheelEvent)=>{e.preventDefault();zoom.current=Math.max(size==='large'?13.5:11.5,Math.min(size==='large'?25:22,zoom.current+e.deltaY*.012))};canvas.addEventListener('contextmenu',context);canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});return()=>{canvas.removeEventListener('contextmenu',context);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel)}},[gl,size])
   useFrame(()=>{if(group.current){group.current.rotation.y+=(drag.current.targetY-group.current.rotation.y)*.12;group.current.rotation.x+=(drag.current.targetX-group.current.rotation.x)*.12}const cam=camera as PerspectiveCamera;const length=Math.hypot(cam.position.x,cam.position.y,cam.position.z);const target=zoom.current;if(Math.abs(length-target)>.01)cam.position.multiplyScalar((length+(target-length)*.12)/length)})
-  return <group ref={group}><RoundedBox args={[boardWidth,.42,boardWidth]} radius={.18} smoothness={4} receiveShadow><meshStandardMaterial color="#22212b" roughness={.65}/></RoundedBox><RoundedBox args={[boardWidth-.28,.20,boardWidth-.28]} radius={.12} smoothness={4} position={[0,.28,0]} receiveShadow><meshStandardMaterial color="#a9c9ae" roughness={.66}/></RoundedBox>{cells.map((cell,index)=>{const[x,,z]=boardPosition(index,side),corner=cell.kind==='corner',rotation=index<=edge?0:index<=edge*2?Math.PI/2:index<=edge*3?Math.PI:-Math.PI/2;return <group key={index} position={[x,.43,z]} rotation={[0,rotation,0]}><RoundedBox args={[corner?1.05:.78,.12,1.05]} radius={.035} smoothness={2} receiveShadow><meshStandardMaterial color={corner?cell.color:'#ded8c7'} roughness={.62}/></RoundedBox>{!corner&&<mesh position={[0,.085,-.38]}><boxGeometry args={[.76,.045,.26]}/><meshStandardMaterial color={cell.color}/></mesh>}<Text position={[0,.112,.05]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>{cell.price&&<Text position={[0,.113,.28]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}<group position={[0,.44,0]} rotation={[0,-Math.PI/4,0]}><Text fontSize={size==='large'?.76:.92} color="#20202a" anchorX="center" anchorY="middle">КУПИМІСТО</Text><Text position={[0,-.58,0]} fontSize={.18} color="#365742" anchorX="center" anchorY="middle">УКРАЇНСЬКА ОНЛАЙН-ГРА</Text></group>{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
+  return <group ref={group}><RoundedBox args={[boardWidth,.42,boardWidth]} radius={.18} smoothness={4} receiveShadow><meshStandardMaterial color="#22212b" roughness={.65}/></RoundedBox><RoundedBox args={[boardWidth-.28,.20,boardWidth-.28]} radius={.12} smoothness={4} position={[0,.28,0]} receiveShadow><meshStandardMaterial color="#78a881" roughness={.82} metalness={0}/></RoundedBox>{cells.map((cell,index)=>{const[x,,z]=boardPosition(index,side),corner=cell.kind==='corner',rotation=index<=edge?0:index<=edge*2?Math.PI/2:index<=edge*3?Math.PI:-Math.PI/2;return <group key={index} position={[x,.43,z]} rotation={[0,rotation,0]}><RoundedBox args={[corner?1.05:.78,.12,1.05]} radius={.035} smoothness={2} receiveShadow><meshStandardMaterial color={corner?cell.color:'#cfc6af'} roughness={.86} metalness={0}/></RoundedBox>{!corner&&<mesh position={[0,.085,-.38]}><boxGeometry args={[.76,.045,.26]}/><meshStandardMaterial color={cell.color}/></mesh>}<Text position={[0,.112,.05]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>{cell.price&&<Text position={[0,.113,.28]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}<group position={[0,.44,0]} rotation={[0,-Math.PI/4,0]}><Text fontSize={size==='large'?.76:.92} color="#20202a" anchorX="center" anchorY="middle">КУПИМІСТО</Text><Text position={[0,-.58,0]} fontSize={.18} color="#365742" anchorX="center" anchorY="middle">УКРАЇНСЬКА ОНЛАЙН-ГРА</Text></group>{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
 }
-export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number];return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true}}><color attach="background" args={['#8fb59a']}/><ambientLight intensity={.82}/><hemisphereLight args={['#dae8d7','#324d3a',1.2]}/><directionalLight position={[7,12,5]} intensity={2.35} castShadow shadow-mapSize={[1024,1024]}/><BoardModel {...props}/><ContactShadows position={[0,-.24,0]} opacity={.3} scale={20} blur={2.4} far={8}/><Environment preset="city"/></Canvas>}
+export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number];return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true,toneMapping:ACESFilmicToneMapping,toneMappingExposure:.72,outputColorSpace:SRGBColorSpace}}><color attach="background" args={['#557b61']}/><ambientLight intensity={.42}/><hemisphereLight args={['#c3d9c5','#263b2d',.72]}/><directionalLight position={[7,12,5]} intensity={1.55} castShadow shadow-mapSize={[1024,1024]}/><BoardModel {...props}/><ContactShadows position={[0,-.24,0]} opacity={.3} scale={20} blur={2.4} far={8}/></Canvas>}

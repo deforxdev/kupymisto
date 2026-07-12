@@ -7,6 +7,17 @@ function getContext() {
   return context
 }
 
+
+export async function unlockAudio() {
+  const ctx = getContext()
+  if (ctx.state !== 'running') await ctx.resume()
+  const buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  source.connect(ctx.destination)
+  source.start()
+}
+
 export function playUiSound(kind: 'select' | 'click' | 'success' = 'click') {
   const ctx = getContext()
   const now = ctx.currentTime
@@ -89,18 +100,22 @@ export function playDiceRoll() {
 
 export function playPawnMove(steps: number) {
   const ctx = getContext()
-  const start = ctx.currentTime
-  const count = Math.min(steps, 12)
+  const start = ctx.currentTime + 0.02
+  const count = Math.min(steps, 16)
   for (let index = 0; index < count; index++) {
     const oscillator = ctx.createOscillator()
     const gain = ctx.createGain()
-    const time = start + index * .075
-    oscillator.type = 'sine'
-    oscillator.frequency.value = 210 + (index % 3) * 35
-    gain.gain.setValueAtTime(.0001, time)
-    gain.gain.exponentialRampToValueAtTime(.035, time + .008)
-    gain.gain.exponentialRampToValueAtTime(.0001, time + .045)
-    oscillator.connect(gain).connect(ctx.destination)
-    oscillator.start(time); oscillator.stop(time + .055)
+    const filter = ctx.createBiquadFilter()
+    const time = start + index * 0.19
+    oscillator.type = 'triangle'
+    oscillator.frequency.value = 165 + (index % 4) * 28
+    filter.type = 'lowpass'
+    filter.frequency.value = 920
+    gain.gain.setValueAtTime(0.0001, time)
+    gain.gain.exponentialRampToValueAtTime(0.075, time + 0.008)
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.085)
+    oscillator.connect(filter).connect(gain).connect(ctx.destination)
+    oscillator.start(time)
+    oscillator.stop(time + 0.1)
   }
 }

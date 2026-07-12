@@ -39,3 +39,6 @@ header{height:80px;display:flex;align-items:center;justify-content:space-between
 @media(max-width:700px){.rotateHint{display:none}}
 /* Richer board palette and zoom feedback */
 .boardOnly{background:oklch(68% .09 151)}.boardOnly::before{background:radial-gradient(circle at 50% 38%,oklch(82% .065 151),oklch(58% .11 151));opacity:.72}.rotateHint{background:oklch(24% .035 151);border-color:oklch(86% .045 151)}
+/* Final exposure correction: intentionally darker stage, no washed-out overlay */
+.boardOnly{background:oklch(48% .085 151)}
+.boardOnly::before{background:radial-gradient(circle at 50% 35%,oklch(67% .075 151),oklch(39% .09 151));opacity:.38}

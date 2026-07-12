@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { LogOut, Settings, Volume2 } from 'lucide-react'
 import type { Room, User } from '../api'
-import { playDiceRoll, playPawnMove } from '../audio'
+import { playDiceRoll, playPawnMove, unlockAudio } from '../audio'
 import ClassicBoard3D, { makeCells } from './ClassicBoard3D'
 
 type Props = { room: Room; user: User; onExit: () => void }
@@ -18,13 +18,14 @@ export default function GameScreen({ room, user, onExit }: Props) {
   const cells = useMemo(() => makeCells(room.boardSize),[room.boardSize])
 
 
-  const roll = () => {
+  const roll = async () => {
     if (rolling || players[turn]?.id !== user.id) return
+    await unlockAudio()
     setRolling(true); playDiceRoll()
     window.setTimeout(() => {
       const a=1+Math.floor(Math.random()*6), b=1+Math.floor(Math.random()*6)
-      setDice([a,b]); playPawnMove(a+b); setPositions(old=>old.map((p,i)=>i===turn?(p+a+b)%cells.length:p)); setRolling(false)
-      window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setTurnNoticeId(value=>value+1) },750)
+      setDice([a,b]); setPositions(old=>old.map((p,i)=>i===turn?(p+a+b)%cells.length:p)); setRolling(false); playPawnMove(a+b)
+      window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setTurnNoticeId(value=>value+1) },Math.max(900,(a+b)*190+260))
     },700)
   }
 
