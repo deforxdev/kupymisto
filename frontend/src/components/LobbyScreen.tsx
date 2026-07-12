@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ArrowRight, Check, Copy, DoorOpen, LogOut, Plus, Users, X } from 'lucide-react'
-import { api, clearToken, type AgeGroup, type Room, type User } from '../api'
+import { api, clearToken, type AgeGroup, type BoardSize, type Room, type User } from '../api'
 import GameScreen from './GameScreen'
 import { playUiSound } from '../audio'
 
@@ -12,6 +12,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   const [roomName, setRoomName] = useState(`${user.name}, місто і компанія`)
   const [maxPlayers, setMaxPlayers] = useState(4)
   const [ageGroup, setAgeGroup] = useState<AgeGroup>('14-15')
+  const [boardSize, setBoardSize] = useState<BoardSize>('standard')
   const [gameStarted, setGameStarted] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [error, setError] = useState('')
@@ -33,7 +34,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
     finally { setLoading(false) }
   }
 
-  const createRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.createRoom({ name: roomName.trim(), maxPlayers, ageGroup })) }
+  const createRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.createRoom({ name: roomName.trim(), maxPlayers })) }
   const joinRoom = (event: FormEvent) => { event.preventDefault(); void run(() => api.joinRoom(joinCode.replace(/[^a-z0-9]/gi, '').toUpperCase())) }
   const copyCode = async () => { if (!room) return; await navigator.clipboard.writeText(room.code); setCopied(true); playUiSound('select'); window.setTimeout(() => setCopied(false), 1600) }
   const leave = async () => { if (!room) return; await api.leaveRoom(room.code).catch(() => null); setRoom(null) }
@@ -56,7 +57,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
             {room.players.map((player, index) => <motion.article key={player.id} initial={{ opacity: 0, x: -18 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * .06 }}><div className={`avatar avatar${index % 4}`}>{player.name.slice(0, 1).toUpperCase()}</div><div><strong>{player.name}</strong><small>{player.host ? 'Власник кімнати' : player.ready ? 'Готовий грати' : 'Ще думає'}</small></div><span className={player.ready ? 'ready yes' : 'ready'}>{player.ready ? 'ГОТОВИЙ' : 'НЕ ГОТОВИЙ'}</span></motion.article>)}
             {Array.from({ length: Math.max(0, room.maxPlayers - room.players.length) }).map((_, i) => <article className="emptyPlayer" key={i}><div className="avatar"><Plus/></div><div><strong>Вільне місце</strong><small>Надішли код другу</small></div></article>)}
           </div>
-          <aside className="roomActions"><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => setGameStarted(true)} disabled={!host || host.id !== user.id}>Почати тестову гру<ArrowRight/></button><small>{host?.id === user.id ? 'Тестовий режим: можна почати навіть одному.' : 'Власник кімнати може почати гру.'}</small></aside>
+          <aside className="roomActions"><div className="insideRoomSettings"><span>НАЛАШТУВАННЯ ГРИ</span><label>Віковий режим<select value={room.ageGroup} disabled={host?.id !== user.id} onChange={async e => { const ageGroup=e.target.value as AgeGroup; setAgeGroup(ageGroup); setRoom((await api.updateRoom(room.code,{ageGroup,boardSize:room.boardSize})).room) }}><option value="10-12">10–12 років</option><option value="14-15">14–15 років</option><option value="18-20">18–20 років</option></select></label><label>Розмір карти<select value={room.boardSize} disabled={host?.id !== user.id} onChange={async e => { const boardSize=e.target.value as BoardSize; setBoardSize(boardSize); setRoom((await api.updateRoom(room.code,{ageGroup:room.ageGroup,boardSize})).room) }}><option value="standard">Стандартна, 40 клітинок</option><option value="large">Велика, 56 клітинок</option></select></label></div><p>Власник: <strong>{host?.name}</strong></p><button className={`primary readyButton ${me?.ready ? 'isReady' : ''}`} onClick={() => void run(() => api.toggleReady(room.code))}>{me?.ready ? 'Я готовий' : 'Позначити готовність'}<Check/></button><button className="startButton" onClick={() => setGameStarted(true)} disabled={!host || host.id !== user.id}>Почати тестову гру<ArrowRight/></button><small>{host?.id === user.id ? 'Тестовий режим: можна почати навіть одному.' : 'Власник кімнати може почати гру.'}</small></aside>
         </div>
       </motion.section>
     </main>
@@ -67,7 +68,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
     <motion.section className="lobbyHome" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="lobbyIntro"><span className="sectionNo">ІГРОВЕ ЛОБІ</span><h1>Збирай своїх.<br/><em>Без зайвих очей.</em></h1><p>Створи приватну кімнату або введи код, який надіслав друг. Публічного списку кімнат тут немає, і це правильно.</p></div>
       <div className="lobbyForms">
-        <form className="createRoomForm" onSubmit={createRoom}><div className="formIcon"><Plus/></div><h2>Створити кімнату</h2><p>Ти станеш власником і отримаєш унікальний код.</p><label>Назва<input value={roomName} onChange={e => setRoomName(e.target.value)} minLength={3} maxLength={40} required/></label><div className="roomSettingsRow"><label>Гравців<select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}><option value={2}>2 гравці</option><option value={3}>3 гравці</option><option value={4}>4 гравці</option><option value={5}>5 гравців</option><option value={6}>6 гравців</option></select></label><label>Віковий режим<select value={ageGroup} onChange={e => setAgeGroup(e.target.value as AgeGroup)}><option value="10-12">10–12 років</option><option value="14-15">14–15 років</option><option value="18-20">18–20 років</option></select></label></div><p className="ageModeHint">Від вікового режиму залежать картки, жарти, ілюстрації та мемні відсилки в грі.</p><button className="primary" disabled={loading}>Створити<ArrowRight/></button></form>
+        <form className="createRoomForm" onSubmit={createRoom}><div className="formIcon"><Plus/></div><h2>Створити кімнату</h2><p>Ти станеш власником і отримаєш унікальний код.</p><label>Назва<input value={roomName} onChange={e => setRoomName(e.target.value)} minLength={3} maxLength={40} required/></label><label>Гравців<select value={maxPlayers} onChange={e => setMaxPlayers(Number(e.target.value))}><option value={2}>2 гравці</option><option value={3}>3 гравці</option><option value={4}>4 гравці</option><option value={5}>5 гравців</option><option value={6}>6 гравців</option></select></label><button className="primary" disabled={loading}>Створити<ArrowRight/></button></form>
         <div className="formDivider"><span>АБО</span></div>
         <form className="joinRoomForm" onSubmit={joinRoom}><div className="formIcon blue"><DoorOpen/></div><h2>Увійти за кодом</h2><p>Код має вигляд <strong>KTTYCTT6</strong>. Вводь без пробілів.</p><label>Код кімнати<input className="codeInput" value={joinCode} onChange={e => setJoinCode(e.target.value.toUpperCase().slice(0, 8))} pattern="[A-Za-z0-9]{8}" minLength={8} maxLength={8} placeholder="KTTYCTT6" required/></label><button className="primary blueButton" disabled={loading || joinCode.length !== 8}>Увійти<ArrowRight/></button></form>
       </div>
