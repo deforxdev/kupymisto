@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -29,13 +30,14 @@ type Player struct {
 	Ready bool   `json:"ready"`
 }
 type Room struct {
-	Code       string    `json:"code"`
-	Name       string    `json:"name"`
-	MaxPlayers int       `json:"maxPlayers"`
-	AgeGroup   string    `json:"ageGroup"`
-	BoardSize  string    `json:"boardSize"`
-	Players    []Player  `json:"players"`
-	CreatedAt  time.Time `json:"createdAt"`
+	Code       string            `json:"code"`
+	Name       string            `json:"name"`
+	MaxPlayers int               `json:"maxPlayers"`
+	AgeGroup   string            `json:"ageGroup"`
+	BoardSize  string            `json:"boardSize"`
+	Ownership  map[string]string `json:"ownership"`
+	Players    []Player          `json:"players"`
+	CreatedAt  time.Time         `json:"createdAt"`
 }
 type Store struct {
 	mu       sync.RWMutex
@@ -179,7 +181,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -249,6 +251,35 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/rooms/{code}/properties", func(w http.ResponseWriter, r *http.Request) {
+		var in struct {
+			CellIndex int `json:"cellIndex"`
+			Price     int `json:"price"`
+		}
+		if readJSON(r, &in) != nil || in.CellIndex < 0 || in.Price < 0 {
+			fail(w, 400, "Некоректна власність")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		user := mustUser(r)
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, ok := store.rooms[code]
+		if !ok || !containsPlayer(room, user.ID) {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if room.Ownership == nil {
+			room.Ownership = map[string]string{}
+		}
+		key := strconv.Itoa(in.CellIndex)
+		if _, exists := room.Ownership[key]; exists {
+			fail(w, 409, "Ця клітинка вже має власника")
+			return
+		}
+		room.Ownership[key] = user.ID
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/ready", func(w http.ResponseWriter, r *http.Request) {

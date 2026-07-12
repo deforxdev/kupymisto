@@ -2,7 +2,7 @@ export type User = { id: string; name: string; email: string }
 export type Player = { id: string; name: string; host: boolean; ready: boolean }
 export type AgeGroup = '10-12' | '14-15' | '18-20'
 export type BoardSize = 'standard' | 'large'
-export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; players: Player[]; createdAt: string }
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; players: Player[]; createdAt: string }
 
 type ApiError = { error?: string }
 
@@ -34,6 +34,7 @@ export const api = {
   updateRoom: (code: string, body: { ageGroup: AgeGroup; boardSize: BoardSize }) => request<{ room: Room }>(`/api/rooms/${code}/settings`, { method: 'PATCH', body: JSON.stringify(body) }),
   joinRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/join`, { method: 'POST' }),
   getRoom: (code: string) => request<{ room: Room }>(`/api/rooms/${code}`),
+  purchaseProperty: (code: string, body: { cellIndex:number; price:number }) => request<{ room: Room }>(`/api/rooms/${code}/properties`, { method: 'POST', body: JSON.stringify(body) }),
   toggleReady: (code: string) => request<{ room: Room }>(`/api/rooms/${code}/ready`, { method: 'POST' }),
   leaveRoom: (code: string) => request<{ ok: boolean }>(`/api/rooms/${code}/leave`, { method: 'POST' }),
 }
