@@ -54,24 +54,26 @@ type Trade struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 type Room struct {
-	Code            string            `json:"code"`
-	Name            string            `json:"name"`
-	MaxPlayers      int               `json:"maxPlayers"`
-	AgeGroup        string            `json:"ageGroup"`
-	BoardSize       string            `json:"boardSize"`
-	Ownership       map[string]string `json:"ownership"`
-	Balances        map[string]int    `json:"balances"`
-	Trades          []Trade           `json:"trades"`
-	TurnSeconds     int               `json:"turnSeconds"`
-	DecisionSeconds int               `json:"decisionSeconds"`
-	Houses          map[string]int    `json:"houses"`
-	CurrentChance   *ChanceCard       `json:"currentChance,omitempty"`
-	Players         []Player          `json:"players"`
-	Started         bool              `json:"started"`
-	Positions       []int             `json:"positions"`
-	Dice            [2]int            `json:"dice"`
-	Turn            int               `json:"turn"`
-	CreatedAt       time.Time         `json:"createdAt"`
+	Code             string            `json:"code"`
+	Name             string            `json:"name"`
+	MaxPlayers       int               `json:"maxPlayers"`
+	AgeGroup         string            `json:"ageGroup"`
+	BoardSize        string            `json:"boardSize"`
+	Ownership        map[string]string `json:"ownership"`
+	Balances         map[string]int    `json:"balances"`
+	Trades           []Trade           `json:"trades"`
+	TurnSeconds      int               `json:"turnSeconds"`
+	DecisionSeconds  int               `json:"decisionSeconds"`
+	Houses           map[string]int    `json:"houses"`
+	CurrentChance    *ChanceCard       `json:"currentChance,omitempty"`
+	Players          []Player          `json:"players"`
+	Started          bool              `json:"started"`
+	Positions        []int             `json:"positions"`
+	Dice             [2]int            `json:"dice"`
+	Turn             int               `json:"turn"`
+	TurnDeadline     time.Time         `json:"turnDeadline"`
+	DecisionDeadline *time.Time        `json:"decisionDeadline,omitempty"`
+	CreatedAt        time.Time         `json:"createdAt"`
 }
 type Store struct {
 	mu       sync.RWMutex
@@ -220,7 +222,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: "14-15", BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, TurnDeadline: time.Now().Add(60 * time.Second), CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -592,6 +594,9 @@ func main() {
 			return
 		}
 		room.Started = true
+		room.Turn = 0
+		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
+		room.DecisionDeadline = nil
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/roll", func(w http.ResponseWriter, r *http.Request) {
@@ -631,6 +636,7 @@ func main() {
 		}
 		rent := 0
 		autoFinished := false
+		room.DecisionDeadline = nil
 		ownerID := room.Ownership[strconv.Itoa(destination)]
 		if ownerID != "" {
 			price, isProperty := propertyPrice(room.BoardSize, destination)
@@ -641,6 +647,10 @@ func main() {
 			}
 			autoFinished = true
 			room.Turn = (room.Turn + 1) % len(room.Players)
+			room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
+		} else if _, isProperty := propertyPrice(room.BoardSize, destination); isProperty {
+			deadline := time.Now().Add(time.Duration(room.DecisionSeconds) * time.Second)
+			room.DecisionDeadline = &deadline
 		}
 		writeJSON(w, 200, map[string]any{"room": room, "rent": rent, "autoFinished": autoFinished})
 	})
@@ -669,6 +679,7 @@ func main() {
 		}
 		room.Balances[user.ID] += result
 		room.Turn = (room.Turn + 1) % len(room.Players)
+		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		writeJSON(w, 200, map[string]any{"room": room, "result": result})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {
@@ -686,6 +697,8 @@ func main() {
 			return
 		}
 		room.Turn = (room.Turn + 1) % len(room.Players)
+		room.DecisionDeadline = nil
+		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/leave", func(w http.ResponseWriter, r *http.Request) {

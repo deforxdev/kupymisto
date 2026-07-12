@@ -84,6 +84,11 @@ func newStore(ctx context.Context) (*Store, error) {
 		if store.rooms == nil {
 			store.rooms = map[string]*Room{}
 		}
+		for _, room := range store.rooms {
+			if room != nil && room.TurnDeadline.IsZero() {
+				room.TurnDeadline = time.Now().Add(time.Duration(max(room.TurnSeconds, 60)) * time.Second)
+			}
+		}
 		log.Println("Loaded Kupymisto state from Supabase")
 	} else if !errors.Is(err, pgx.ErrNoRows) {
 		pool.Close()

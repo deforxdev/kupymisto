@@ -38,15 +38,18 @@ export default function GameScreen({room,user,onExit}:Props){
   void api.finishTurn(room.code).then(({room:r})=>{setLiveRoom(r)}).catch(()=>null).finally(()=>{finishing.current=false})
  }
  useEffect(()=>{const t=setInterval(()=>api.getRoom(room.code).then(({room:r})=>{setLiveRoom(r);if(r.positions?.length===players.length)setPositions(r.positions);setDice(safeDice(r.dice));if(r.currentChance&&r.currentChance.nonce!==shownNonce.current){shownNonce.current=r.currentChance.nonce;setDrawNonce(r.currentChance.nonce);setChance(r.currentChance)}}).catch(()=>null),900);return()=>clearInterval(t)},[room.code,players.length])
- // Only (re)arm timers for timed phases. Never force timeLeft=0 on moving/card — that used to
- // open the property/chance UI and immediately call finishTurn on the same paint.
  useEffect(()=>{
-  if(phase==='roll') setTimeLeft(liveRoom.turnSeconds||60)
-  else if(phase==='decision') setTimeLeft(liveRoom.decisionSeconds||45)
- },[phase,turn,liveRoom.turnSeconds,liveRoom.decisionSeconds])
+  const deadline=phase==='decision'?liveRoom.decisionDeadline:liveRoom.turnDeadline
+  if(!deadline)return
+  const syncTime=()=>setTimeLeft(Math.max(0,Math.ceil((Date.parse(deadline)-Date.now())/1000)))
+  syncTime()
+  const timer=window.setInterval(syncTime,250)
+  return()=>window.clearInterval(timer)
+ },[phase,liveRoom.turnDeadline,liveRoom.decisionDeadline])
  useEffect(()=>{
   if(phase!=='roll'&&phase!=='decision') return
   if(players[turn]?.id!==user.id) return
+ if((phase==='decision'?liveRoom.decisionDeadline:liveRoom.turnDeadline)) return
   if(timeLeft<=0){
    finishTurn()
    return
