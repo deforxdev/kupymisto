@@ -32,6 +32,7 @@ type Room struct {
 	Code       string    `json:"code"`
 	Name       string    `json:"name"`
 	MaxPlayers int       `json:"maxPlayers"`
+	AgeGroup   string    `json:"ageGroup"`
 	Players    []Player  `json:"players"`
 	CreatedAt  time.Time `json:"createdAt"`
 }
@@ -157,13 +158,14 @@ func main() {
 		var in struct {
 			Name       string `json:"name"`
 			MaxPlayers int    `json:"maxPlayers"`
+			AgeGroup   string `json:"ageGroup"`
 		}
 		if readJSON(r, &in) != nil {
 			fail(w, 400, "Перевір налаштування кімнати")
 			return
 		}
 		in.Name = strings.TrimSpace(in.Name)
-		if len([]rune(in.Name)) < 3 || len([]rune(in.Name)) > 40 || in.MaxPlayers < 2 || in.MaxPlayers > 6 {
+		if len([]rune(in.Name)) < 3 || len([]rune(in.Name)) > 40 || in.MaxPlayers < 2 || in.MaxPlayers > 6 || !validAgeGroup(in.AgeGroup) {
 			fail(w, 400, "Некоректні налаштування кімнати")
 			return
 		}
@@ -177,7 +179,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, AgeGroup: in.AgeGroup, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -271,6 +273,9 @@ func main() {
 	log.Fatal(server.ListenAndServe())
 }
 
+func validAgeGroup(value string) bool {
+	return value == "10-12" || value == "14-15" || value == "18-20"
+}
 func containsPlayer(room *Room, id string) bool {
 	for _, p := range room.Players {
 		if p.ID == id {
