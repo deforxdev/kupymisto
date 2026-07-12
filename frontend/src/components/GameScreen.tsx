@@ -15,11 +15,31 @@ export default function GameScreen({room,user,onExit}:Props){
  const [phase,setPhase]=useState<'roll'|'moving'|'decision'|'card'>('roll'),[timeLeft,setTimeLeft]=useState(liveRoom.turnSeconds||60)
  const [selected,setSelected]=useState(0),[propertyOpen,setPropertyOpen]=useState(false),[pendingDeck,setPendingDeck]=useState<'chance'|'bad'|null>(null),[chance,setChance]=useState<ChanceEvent|null>(null),[drawNonce,setDrawNonce]=useState(0),[tradeOpen,setTradeOpen]=useState(false)
  const shownNonce=useRef(0),meIndex=Math.max(0,players.findIndex(p=>p.id===user.id)),balance=liveRoom.balances?.[user.id]??1500,current=cells[selected],ownerId=liveRoom.ownership?.[String(selected)],standing=(positions[meIndex]??0)===selected
- const finishTurn=()=>{setPropertyOpen(false);setPendingDeck(null);setPhase('roll');setTurn(v=>(v+1)%players.length)}
+ const finishTurn=()=>{
+  setPropertyOpen(false)
+  setPendingDeck(null)
+  setChance(null)
+  setPhase('roll')
+  setTimeLeft(liveRoom.turnSeconds||60)
+  setTurn(v=>(v+1)%players.length)
+ }
  useEffect(()=>{const t=setInterval(()=>api.getRoom(room.code).then(({room:r})=>{setLiveRoom(r);if(r.currentChance&&r.currentChance.nonce!==shownNonce.current){shownNonce.current=r.currentChance.nonce;setDrawNonce(r.currentChance.nonce);setChance(r.currentChance)}}).catch(()=>null),900);return()=>clearInterval(t)},[room.code])
- useEffect(()=>{setTimeLeft(phase==='roll'?(liveRoom.turnSeconds||60):phase==='decision'?(liveRoom.decisionSeconds||45):0)},[phase,turn,liveRoom.turnSeconds,liveRoom.decisionSeconds])
- useEffect(()=>{if(phase==='moving'||phase==='card')return;if(timeLeft<=0){finishTurn();return}const t=setTimeout(()=>setTimeLeft(v=>v-1),1000);return()=>clearTimeout(t)},[timeLeft,phase])
- const roll=async()=>{if(rolling||phase!=='roll'||players[turn]?.id!==user.id)return;await unlockAudio();setPhase('moving');setRolling(true);playDiceRoll();setTimeout(()=>{const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6),dest=((positions[turn]||0)+a+b)%cells.length;setDice([a,b]);setRolling(false);setTimeout(()=>{playPawnMove(a+b);setPositions(v=>v.map((p,i)=>i===turn?dest:p));setSelected(dest);setTimeout(()=>{const landed=cells[dest];if(landed.kind==='city'){setPropertyOpen(true);setPhase('decision')}else if(landed.kind==='chance'){setPendingDeck('chance');setPhase('card')}else if(landed.kind==='tax'){setPendingDeck('bad');setPhase('card')}else finishTurn()},(a+b)*190+250)},1000)},700)}
+ // Only (re)arm timers for timed phases. Never force timeLeft=0 on moving/card — that used to
+ // open the property/chance UI and immediately call finishTurn on the same paint.
+ useEffect(()=>{
+  if(phase==='roll') setTimeLeft(liveRoom.turnSeconds||60)
+  else if(phase==='decision') setTimeLeft(liveRoom.decisionSeconds||45)
+ },[phase,turn,liveRoom.turnSeconds,liveRoom.decisionSeconds])
+ useEffect(()=>{
+  if(phase!=='roll'&&phase!=='decision') return
+  if(timeLeft<=0){
+   finishTurn()
+   return
+  }
+  const t=setTimeout(()=>setTimeLeft(v=>v-1),1000)
+  return()=>clearTimeout(t)
+ },[timeLeft,phase])
+ const roll=async()=>{if(rolling||phase!=='roll'||players[turn]?.id!==user.id)return;await unlockAudio();setPhase('moving');setRolling(true);playDiceRoll();setTimeout(()=>{const a=1+Math.floor(Math.random()*6),b=1+Math.floor(Math.random()*6),dest=((positions[turn]||0)+a+b)%cells.length;setDice([a,b]);setRolling(false);setTimeout(()=>{playPawnMove(a+b);setPositions(v=>v.map((p,i)=>i===turn?dest:p));setSelected(dest);setTimeout(()=>{const landed=cells[dest];if(landed.kind==='city'){const decision=liveRoom.decisionSeconds||45;setPropertyOpen(true);setTimeLeft(decision);setPhase('decision')}else if(landed.kind==='chance'){setPendingDeck('chance');setPhase('card')}else if(landed.kind==='tax'){setPendingDeck('bad');setPhase('card')}else finishTurn()},(a+b)*190+250)},1000)},700)}
  const draw=async(kind:'chance'|'bad')=>{
   if(pendingDeck!==kind||players[turn]?.id!==user.id)return
   await unlockAudio()

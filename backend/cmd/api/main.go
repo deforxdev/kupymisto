@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -71,6 +72,7 @@ type Store struct {
 	users    map[string]User
 	sessions map[string]string
 	rooms    map[string]*Room
+	db       *pgxpool.Pool
 }
 
 type contextKey string
@@ -113,7 +115,11 @@ func fail(w http.ResponseWriter, status int, message string) {
 }
 
 func main() {
-	store := &Store{users: map[string]User{}, sessions: map[string]string{}, rooms: map[string]*Room{}}
+	store, err := newStore(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer store.close()
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
 
@@ -574,7 +580,7 @@ func main() {
 	mux.Handle("/api/auth/me", auth(store, protected))
 	mux.Handle("/api/rooms", auth(store, protected))
 	mux.Handle("/api/rooms/", auth(store, protected))
-	server := &http.Server{Addr: ":8080", Handler: securityHeaders(mux), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
+	server := &http.Server{Addr: ":8080", Handler: securityHeaders(persisting(store, mux)), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 10 * time.Second, WriteTimeout: 10 * time.Second, IdleTimeout: 60 * time.Second}
 	log.Println("Kupymisto API listening on :8080")
 	log.Fatal(server.ListenAndServe())
 }

@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+if [ ! -f frontend/src/components/ClassicBoard3D.tsx ] || [ ! -f frontend/src/audio.ts ]; then
+  echo "Запусти файл у корені kupymisto після попереднього фіксу дошки."
+  exit 1
+fi
+
+cat >> frontend/src/audio.ts <<'EOF'
+
+export function playDiceRoll() {
+  const ctx = getContext()
+  const start = ctx.currentTime
+  ;[0, .07, .13, .21, .30, .40, .51, .63].forEach((delay, index) => {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const filter = ctx.createBiquadFilter()
+    oscillator.type = index % 2 ? 'triangle' : 'square'
+    oscillator.frequency.value = 105 + Math.random() * 85
+    filter.type = 'lowpass'
+    filter.frequency.value = 720 + Math.random() * 500
+    const time = start + delay
+    gain.gain.setValueAtTime(.0001, time)
+    gain.gain.exponentialRampToValueAtTime(.045 * (1 - index / 12), time + .006)
+    gain.gain.exponentialRampToValueAtTime(.0001, time + .055)
+    oscillator.connect(filter).connect(gain).connect(ctx.destination)
+    oscillator.start(time); oscillator.stop(time + .065)
+  })
+}
+
+export function playPawnMove(steps: number) {
+  const ctx = getContext()
+  const start = ctx.currentTime
+  const count = Math.min(steps, 12)
+  for (let index = 0; index < count; index++) {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const time = start + index * .075
+    oscillator.type = 'sine'
+    oscillator.frequency.value = 210 + (index % 3) * 35
+    gain.gain.setValueAtTime(.0001, time)
+    gain.gain.exponentialRampToValueAtTime(.035, time + .008)
+    gain.gain.exponentialRampToValueAtTime(.0001, time + .045)
+    oscillator.connect(gain).connect(ctx.destination)
+    oscillator.start(time); oscillator.stop(time + .055)
+  }
+}
+EOF
+
+cat > frontend/src/components/ClassicBoard3D.tsx <<'EOF'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
+import { ContactShadows, Environment, RoundedBox, Text } from '@react-three/drei'
+import { useEffect, useMemo, useRef } from 'react'
+import type { Group, Mesh, PerspectiveCamera } from 'three'
+import type { BoardSize, Player } from '../api'
+
+export type BoardCell = { name:string; kind:'corner'|'city'|'chance'|'tax'|'station'; price?:number; color:string }
+const cityNames=['Київ','Львів','Одеса','Харків','Дніпро','Чернівці','Ужгород','Луцьк','Рівне','Житомир','Вінниця','Полтава','Черкаси','Суми','Чернігів','Тернопіль','Івано-Франківськ','Миколаїв','Херсон','Запоріжжя','Кропивницький','Біла Церква','Кременчук','Кам’янець']
+const bands=['#71472f','#71472f','#55aeca','#55aeca','#cf4d83','#cf4d83','#e17132','#e17132','#c93f39','#c93f39','#e5b92f','#e5b92f','#47985c','#47985c','#3565c2','#3565c2']
+export function makeCells(size:BoardSize):BoardCell[]{const side=size==='large'?15:11,total=side*4-4;let city=0;return Array.from({length:total},(_,index)=>{if(index%(side-1)===0){const corners=['СТАРТ','ВІЛЬНА ЗУПИНКА','МІСЬКА РАДА','ПАРКІНГ'];return{name:corners[index/(side-1)],kind:'corner',color:index===0?'#e8bd32':'#d9e2d1'}}if(index%7===0)return{name:'ШАНС',kind:'chance',color:'#ded8c7'};if(index%9===0)return{name:'ЗБІР',kind:'tax',color:'#d8d1bf'};if(index%5===0)return{name:'ВОКЗАЛ',kind:'station',price:200,color:'#d8d1bf'};const name=cityNames[city%cityNames.length],color=bands[Math.floor(city/2)%bands.length];city++;return{name,kind:'city',price:100+(city%9)*30,color}})}
+function boardPosition(index:number,side:number):[number,number,number]{const edge=side-1,half=edge/2;if(index<=edge)return[half-index,0,half];if(index<=edge*2)return[-half,0,half-(index-edge)];if(index<=edge*3)return[-half+(index-edge*2),0,-half];return[half,0,-half+(index-edge*3)]}
+
+function Token({index,side,color,offset}:{index:number;side:number;color:string;offset:number}){
+  const ref=useRef<Group>(null), previous=useRef(index), progress=useRef(1)
+  const from=useRef(boardPosition(index,side)), to=useRef(boardPosition(index,side))
+  useEffect(()=>{if(index===previous.current)return;from.current=boardPosition(previous.current,side);to.current=boardPosition(index,side);previous.current=index;progress.current=0},[index,side])
+  useFrame((_,delta)=>{if(!ref.current)return;progress.current=Math.min(1,progress.current+delta*1.45);const t=1-Math.pow(1-progress.current,3),a=from.current,b=to.current;ref.current.position.x=a[0]+(b[0]-a[0])*t+offset;ref.current.position.z=a[2]+(b[2]-a[2])*t+offset;ref.current.position.y=.48+Math.sin(progress.current*Math.PI*4)*Math.max(0,1-progress.current)*.32;ref.current.rotation.y+=delta*(progress.current<1?5:.25)})
+  return <group ref={ref} position={[from.current[0]+offset,.48,from.current[2]+offset]}><mesh position={[0,.28,0]} castShadow><sphereGeometry args={[.16,24,24]}/><meshStandardMaterial color={color} roughness={.3}/></mesh><mesh castShadow><coneGeometry args={[.28,.55,24]}/><meshStandardMaterial color={color} roughness={.36}/></mesh><mesh position={[0,-.29,0]} castShadow><cylinderGeometry args={[.31,.31,.09,24]}/><meshStandardMaterial color="#20202a"/></mesh></group>
+}
+
+const pipMap:Record<number,[number,number][]>={1:[[0,0]],2:[[-1,1],[1,-1]],3:[[-1,1],[0,0],[1,-1]],4:[[-1,1],[1,1],[-1,-1],[1,-1]],5:[[-1,1],[1,1],[0,0],[-1,-1],[1,-1]],6:[[-1,1],[-1,0],[-1,-1],[1,1],[1,0],[1,-1]]}
+function FacePips({value,face}:{value:number;face:'top'|'front'|'back'|'left'|'right'|'bottom'}){const rotation:[number,number,number]=face==='top'?[-Math.PI/2,0,0]:face==='bottom'?[Math.PI/2,0,0]:face==='front'?[0,0,0]:face==='back'?[0,Math.PI,0]:face==='left'?[0,-Math.PI/2,0]:[0,Math.PI/2,0];const position:[number,number,number]=face==='top'?[0,.366,0]:face==='bottom'?[0,-.366,0]:face==='front'?[0,0,.366]:face==='back'?[0,0,-.366]:face==='left'?[-.366,0,0]:[.366,0,0];return <group position={position} rotation={rotation}>{pipMap[value].map(([x,y],i)=><mesh key={i} position={[x*.19,y*.19,.008]}><circleGeometry args={[.055,18]}/><meshStandardMaterial color="#24232b" roughness={.5}/></mesh>)}</group>}
+function Die({home,value,rolling,seed}:{home:[number,number,number];value:number;rolling:boolean;seed:number}){
+  const ref=useRef<Group>(null), phase=useRef(0), wasRolling=useRef(false)
+  useEffect(()=>{if(rolling&&!wasRolling.current)phase.current=0;wasRolling.current=rolling},[rolling])
+  useFrame((_,delta)=>{if(!ref.current)return;if(rolling){phase.current=Math.min(1,phase.current+delta*1.35);const t=phase.current;ref.current.position.x=home[0]+Math.sin(t*Math.PI*3+seed)*.7*(1-t);ref.current.position.z=home[2]+Math.cos(t*Math.PI*2.4+seed)*.55*(1-t);ref.current.position.y=home[1]+Math.sin(t*Math.PI)*1.65+Math.abs(Math.sin(t*Math.PI*5))*.16*(1-t);ref.current.rotation.x+=delta*(15+seed*2);ref.current.rotation.y+=delta*(12+seed);ref.current.rotation.z+=delta*9}else{ref.current.position.x+=(home[0]-ref.current.position.x)*.12;ref.current.position.y+=(home[1]-ref.current.position.y)*.18;ref.current.position.z+=(home[2]-ref.current.position.z)*.12;ref.current.rotation.x+=(-ref.current.rotation.x)*.08;ref.current.rotation.z+=(-ref.current.rotation.z)*.08}}
+  const faces=[value,7-value,((value+1)%6)+1,7-(((value+1)%6)+1),((value+3)%6)+1,7-(((value+3)%6)+1)]
+  return <group ref={ref} position={home}><RoundedBox args={[.72,.72,.72]} radius={.115} smoothness={5} castShadow><meshStandardMaterial color="#e9e2d2" roughness={.3} metalness={.02}/></RoundedBox><FacePips value={faces[0]} face="top"/><FacePips value={faces[1]} face="bottom"/><FacePips value={faces[2]} face="front"/><FacePips value={faces[3]} face="back"/><FacePips value={faces[4]} face="left"/><FacePips value={faces[5]} face="right"/></group>
+}
+
+function BoardModel({size,positions,players,dice,rolling}:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean}){
+  const group=useRef<Group>(null),drag=useRef({active:false,x:0,y:0,targetX:-.04,targetY:0}),zoom=useRef(size==='large'?18.5:16.2),{gl,camera}=useThree(),cells=useMemo(()=>makeCells(size),[size]),side=size==='large'?15:11,edge=side-1,boardWidth=edge+1.7,playerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44']
+  useEffect(()=>{const canvas=gl.domElement,context=(e:MouseEvent)=>e.preventDefault(),down=(e:PointerEvent)=>{if(e.button!==2)return;e.preventDefault();drag.current.active=true;drag.current.x=e.clientX;drag.current.y=e.clientY;canvas.setPointerCapture?.(e.pointerId);canvas.classList.add('isRotating')},move=(e:PointerEvent)=>{if(!drag.current.active||(e.buttons&2)!==2)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;drag.current.x=e.clientX;drag.current.y=e.clientY;drag.current.targetY+=dx*.008;drag.current.targetX=Math.max(-.38,Math.min(.32,drag.current.targetX+dy*.005))},up=(e:PointerEvent)=>{if(e.button!==2)return;drag.current.active=false;canvas.releasePointerCapture?.(e.pointerId);canvas.classList.remove('isRotating')},wheel=(e:WheelEvent)=>{e.preventDefault();zoom.current=Math.max(size==='large'?13.5:11.5,Math.min(size==='large'?25:22,zoom.current+e.deltaY*.012))};canvas.addEventListener('contextmenu',context);canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});return()=>{canvas.removeEventListener('contextmenu',context);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel)}},[gl,size])
+  useFrame(()=>{if(group.current){group.current.rotation.y+=(drag.current.targetY-group.current.rotation.y)*.12;group.current.rotation.x+=(drag.current.targetX-group.current.rotation.x)*.12}const cam=camera as PerspectiveCamera;const length=Math.hypot(cam.position.x,cam.position.y,cam.position.z);const target=zoom.current;if(Math.abs(length-target)>.01)cam.position.multiplyScalar((length+(target-length)*.12)/length)})
+  return <group ref={group}><RoundedBox args={[boardWidth,.42,boardWidth]} radius={.18} smoothness={4} receiveShadow><meshStandardMaterial color="#22212b" roughness={.65}/></RoundedBox><RoundedBox args={[boardWidth-.28,.20,boardWidth-.28]} radius={.12} smoothness={4} position={[0,.28,0]} receiveShadow><meshStandardMaterial color="#a9c9ae" roughness={.66}/></RoundedBox>{cells.map((cell,index)=>{const[x,,z]=boardPosition(index,side),corner=cell.kind==='corner',rotation=index<=edge?0:index<=edge*2?Math.PI/2:index<=edge*3?Math.PI:-Math.PI/2;return <group key={index} position={[x,.43,z]} rotation={[0,rotation,0]}><RoundedBox args={[corner?1.05:.78,.12,1.05]} radius={.035} smoothness={2} receiveShadow><meshStandardMaterial color={corner?cell.color:'#ded8c7'} roughness={.62}/></RoundedBox>{!corner&&<mesh position={[0,.085,-.38]}><boxGeometry args={[.76,.045,.26]}/><meshStandardMaterial color={cell.color}/></mesh>}<Text position={[0,.112,.05]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>{cell.price&&<Text position={[0,.113,.28]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}<group position={[0,.44,0]} rotation={[0,-Math.PI/4,0]}><Text fontSize={size==='large'?.76:.92} color="#20202a" anchorX="center" anchorY="middle">КУПИМІСТО</Text><Text position={[0,-.58,0]} fontSize={.18} color="#365742" anchorX="center" anchorY="middle">УКРАЇНСЬКА ОНЛАЙН-ГРА</Text></group>{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
+}
+export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number];return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true}}><color attach="background" args={['#8fb59a']}/><ambientLight intensity={.82}/><hemisphereLight args={['#dae8d7','#324d3a',1.2]}/><directionalLight position={[7,12,5]} intensity={2.35} castShadow shadow-mapSize={[1024,1024]}/><BoardModel {...props}/><ContactShadows position={[0,-.24,0]} opacity={.3} scale={20} blur={2.4} far={8}/><Environment preset="city"/></Canvas>}
+EOF
+
+python3 <<'PY'
+from pathlib import Path
+p=Path('frontend/src/components/GameScreen.tsx')
+s=p.read_text(encoding='utf-8')
+s=s.replace("import { playUiSound } from '../audio'", "import { playDiceRoll, playPawnMove } from '../audio'")
+s=s.replace("setRolling(true); playUiSound('click')", "setRolling(true); playDiceRoll()")
+s=s.replace("setDice([a,b]); setPositions", "setDice([a,b]); playPawnMove(a+b); setPositions")
+s=s.replace("setRolling(false); playUiSound('success')", "setRolling(false)")
+s=s.replace("Затисни праву кнопку миші та рухай, щоб обертати дошку", "Права кнопка: обертання. Колесо: масштаб")
+p.write_text(s, encoding='utf-8')
+PY
+
+cat >> frontend/src/styles.css <<'EOF'
+/* Richer board palette and zoom feedback */
+.boardOnly{background:oklch(68% .09 151)}.boardOnly::before{background:radial-gradient(circle at 50% 38%,oklch(82% .065 151),oklch(58% .11 151));opacity:.72}.rotateHint{background:oklch(24% .035 151);border-color:oklch(86% .045 151)}
+EOF
+
+npm --prefix frontend run build
+
+git add frontend/src/audio.ts frontend/src/components/ClassicBoard3D.tsx frontend/src/components/GameScreen.tsx frontend/src/styles.css
+git commit -m "feat: add physical dice, animated pawns, zoom and game sounds" || true
+git push || echo "Виконай git push вручну"
+
+echo "Готово. Перезапусти: docker compose down && docker compose up"
