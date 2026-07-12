@@ -670,7 +670,7 @@ func securityHeaders(next http.Handler) http.Handler {
 func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		allowedOrigin := os.Getenv("FRONTEND_URL")
+		allowedOrigin := strings.TrimRight(os.Getenv("FRONTEND_URL"), "/")
 		if allowedOrigin == "" {
 			allowedOrigin = origin
 		}
