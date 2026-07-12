@@ -38,6 +38,7 @@ type ChanceCard struct {
 	Text    string `json:"text"`
 	Amount  int    `json:"amount"`
 	Art     string `json:"art"`
+	Deck    string `json:"deck,omitempty"`
 	Nonce   int64  `json:"nonce"`
 	DrawnBy string `json:"drawnBy"`
 }
@@ -413,6 +414,7 @@ func main() {
 		}
 		deck := loadDeck("bad")
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
+		card.Deck = "bad"
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
 		if room.Balances == nil {
@@ -434,6 +436,7 @@ func main() {
 		}
 		deck := loadDeck("chance")
 		card := deck[time.Now().UnixNano()%int64(len(deck))]
+		card.Deck = "chance"
 		card.Nonce = time.Now().UnixNano()
 		card.DrawnBy = user.ID
 		if room.Balances == nil {
@@ -679,15 +682,17 @@ type DeckConfig struct {
 }
 
 func loadDeck(kind string) []ChanceCard {
-	raw, err := os.ReadFile("data/decks.json")
-	if err == nil {
-		var cfg DeckConfig
-		if json.Unmarshal(raw, &cfg) == nil {
-			if kind == "bad" && len(cfg.Bad) > 0 {
-				return cfg.Bad
-			}
-			if kind == "chance" && len(cfg.Chance) > 0 {
-				return cfg.Chance
+	for _, path := range []string{"data/decks.json", "backend/data/decks.json"} {
+		raw, err := os.ReadFile(path)
+		if err == nil {
+			var cfg DeckConfig
+			if json.Unmarshal(raw, &cfg) == nil {
+				if kind == "bad" && len(cfg.Bad) > 0 {
+					return cfg.Bad
+				}
+				if kind == "chance" && len(cfg.Chance) > 0 {
+					return cfg.Chance
+				}
 			}
 		}
 	}
