@@ -8,10 +8,11 @@ import ChanceCard,{type ChanceEvent} from './ChanceCard'
 import TradePanel,{IncomingTrades} from './TradePanel'
 
 type Props={room:Room;user:User;onExit:()=>void}
+const safeDice=(dice?:[number,number]):[number,number]=>dice&&dice.every(value=>value>=1&&value<=6)?dice:[1,1]
 export default function GameScreen({room,user,onExit}:Props){
  const [liveRoom,setLiveRoom]=useState(room),players=liveRoom.players
  const cells=useMemo(()=>makeCells(liveRoom.boardSize),[liveRoom.boardSize])
- const [positions,setPositions]=useState(room.positions?.length===players.length?room.positions:players.map(()=>0)),[dice,setDice]=useState<[number,number]>(room.dice||[1,1]),[rolling,setRolling]=useState(false),[turn,setTurn]=useState(room.turn||0)
+ const [positions,setPositions]=useState(room.positions?.length===players.length?room.positions:players.map(()=>0)),[dice,setDice]=useState<[number,number]>(safeDice(room.dice)),[rolling,setRolling]=useState(false),[turn,setTurn]=useState(room.turn||0)
  const [phase,setPhase]=useState<'roll'|'moving'|'decision'|'card'>('roll'),[timeLeft,setTimeLeft]=useState(liveRoom.turnSeconds||60)
  const [selected,setSelected]=useState(0),[propertyOpen,setPropertyOpen]=useState(false),[pendingDeck,setPendingDeck]=useState<'chance'|'bad'|null>(null),[chance,setChance]=useState<ChanceEvent|null>(null),[drawNonce,setDrawNonce]=useState(0),[tradeOpen,setTradeOpen]=useState(false)
  const shownNonce=useRef(0),finishing=useRef(false),meIndex=Math.max(0,players.findIndex(p=>p.id===user.id)),balance=liveRoom.balances?.[user.id]??1500,current=cells[selected],ownerId=liveRoom.ownership?.[String(selected)],standing=(positions[meIndex]??0)===selected
@@ -25,7 +26,7 @@ export default function GameScreen({room,user,onExit}:Props){
   setTimeLeft(liveRoom.turnSeconds||60)
   void api.finishTurn(room.code).then(({room:r})=>{setLiveRoom(r);setTurn(r.turn)}).catch(()=>null).finally(()=>{finishing.current=false})
  }
- useEffect(()=>{const t=setInterval(()=>api.getRoom(room.code).then(({room:r})=>{setLiveRoom(r);if(r.positions?.length===players.length)setPositions(r.positions);if(r.dice)setDice(r.dice);if(phase==='roll')setTurn(r.turn);if(r.currentChance&&r.currentChance.nonce!==shownNonce.current){shownNonce.current=r.currentChance.nonce;setDrawNonce(r.currentChance.nonce);setChance(r.currentChance)}}).catch(()=>null),900);return()=>clearInterval(t)},[room.code,phase,players.length])
+ useEffect(()=>{const t=setInterval(()=>api.getRoom(room.code).then(({room:r})=>{setLiveRoom(r);if(r.positions?.length===players.length)setPositions(r.positions);setDice(safeDice(r.dice));if(phase==='roll')setTurn(r.turn);if(r.currentChance&&r.currentChance.nonce!==shownNonce.current){shownNonce.current=r.currentChance.nonce;setDrawNonce(r.currentChance.nonce);setChance(r.currentChance)}}).catch(()=>null),900);return()=>clearInterval(t)},[room.code,phase,players.length])
  // Only (re)arm timers for timed phases. Never force timeLeft=0 on moving/card — that used to
  // open the property/chance UI and immediately call finishTurn on the same paint.
  useEffect(()=>{
@@ -50,8 +51,8 @@ export default function GameScreen({room,user,onExit}:Props){
   try{
    const result=await api.roll(room.code)
    const nextRoom=result.room
-   const nextDice=nextRoom.dice
-   const nextPosition=nextRoom.positions[turn]??positions[turn]??0
+   const nextDice=safeDice(nextRoom.dice)
+   const nextPosition=nextRoom.positions?.[turn]??positions[turn]??0
    setLiveRoom(nextRoom)
    setDice(nextDice)
    setPositions(nextRoom.positions)
