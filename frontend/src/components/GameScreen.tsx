@@ -24,8 +24,12 @@ export default function GameScreen({ room, user, onExit }: Props) {
     setRolling(true); playDiceRoll()
     window.setTimeout(() => {
       const a=1+Math.floor(Math.random()*6), b=1+Math.floor(Math.random()*6)
-      setDice([a,b]); setPositions(old=>old.map((p,i)=>i===turn?(p+a+b)%cells.length:p)); setRolling(false); playPawnMove(a+b)
-      window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setTurnNoticeId(value=>value+1) },Math.max(900,(a+b)*190+260))
+      setDice([a,b]); setRolling(false)
+      window.setTimeout(() => {
+        playPawnMove(a+b)
+        setPositions(old=>old.map((p,i)=>i===turn?(p+a+b)%cells.length:p))
+        window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setTurnNoticeId(value=>value+1) },Math.max(900,(a+b)*190+260))
+      }, 1000)
     },700)
   }
 
