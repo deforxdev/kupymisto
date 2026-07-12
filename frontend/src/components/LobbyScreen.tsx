@@ -73,7 +73,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   }
   const logout = () => { clearToken(); onLogout() }
 
-  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { ignoreStarted.current = true; clearActiveRoomCode(); setGameStarted(false) }} />
+  if (room && gameStarted) return <GameScreen room={room} user={user} onExit={() => { ignoreStarted.current = true; clearActiveRoomCode(); setGameStarted(false); void leave() }} />
 
   if (room) {
     const me = room.players.find(player => player.id === user.id)

@@ -4,9 +4,10 @@ export type AgeGroup = '10-12' | '14-15' | '18-20'
 export type BoardSize = 'standard' | 'large'
 export type SharedChance = { id:string; title:string; text:string; amount:number; art:'owl'|'bus'|'rich'|'fire'; deck?:'chance'|'bad'; nonce:number; drawnBy:string }
 export type Trade={id:string;from:string;to:string;giveCell:number;wantCell:number;giveMoney:number;wantMoney:number;status:'pending'|'accepted'|'rejected';expiresAt:string}
-export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; balances:Record<string,number>; trades:Trade[]; turnSeconds:number; decisionSeconds:number; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; started: boolean; positions: number[]; dice: [number, number]; turn: number; turnDeadline?: string; decisionDeadline?: string; createdAt: string }
+export type Room = { code: string; name: string; maxPlayers: number; ageGroup: AgeGroup; boardSize: BoardSize; ownership: Record<string,string>; balances:Record<string,number>; trades:Trade[]; turnSeconds:number; decisionSeconds:number; houses: Record<string,number>; currentChance?: SharedChance; chanceAcknowledged?: string[]; players: Player[]; started: boolean; positions: number[]; dice: [number, number]; turn: number; turnDeadline?: string; decisionDeadline?: string; winnerId?: string; createdAt: string }
 
 type ApiError = { error?: string }
+type RequestError = Error & { status: number }
 
 const TOKEN_KEY = 'kupymisto_token'
 const ACTIVE_ROOM_KEY = 'kupymisto_active_room'
@@ -30,7 +31,11 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
     },
   })
   const data = await response.json().catch(() => ({})) as T & ApiError
-  if (!response.ok) throw new Error(data.error || 'Щось пішло не так')
+  if (!response.ok) {
+    const error = new Error(data.error || 'Щось пішло не так') as RequestError
+    error.status = response.status
+    throw error
+  }
   return data
 }
 
@@ -58,4 +63,5 @@ export const api = {
   adminSetOwnership: (code: string, body: { playerId: string; cellIndex: number; action: 'grant' | 'revoke' }) => request<{ room: Room }>(`/api/admin/rooms/${code}/ownership`, { method: 'PATCH', body: JSON.stringify(body) }),
   adminSetHouses: (code: string, body: { cellIndex: number; count: number }) => request<{ room: Room }>(`/api/admin/rooms/${code}/houses`, { method: 'PATCH', body: JSON.stringify(body) }),
   adminAdjustBalance: (code: string, body: { playerId: string; delta: number }) => request<{ room: Room }>(`/api/admin/rooms/${code}/balances`, { method: 'PATCH', body: JSON.stringify(body) }),
+  adminKickPlayer: (code: string, playerId: string) => request<{ room: Room; ok?: boolean }>(`/api/admin/rooms/${code}/kick`, { method: 'POST', body: JSON.stringify({ playerId }) }),
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { X } from 'lucide-react'
 import { api, type Room } from '../api'
@@ -22,6 +22,9 @@ export default function AdminPanel({ room, onRoom, onClose }: AdminPanelProps) {
   const [delta, setDelta] = useState(100)
   const [error, setError] = useState('')
   const [message, setMessage] = useState('')
+  useEffect(() => {
+    if (!players.some((player) => player.id === playerId)) setPlayerId(players[0]?.id ?? '')
+  }, [players, playerId])
 
   const run = async (operation: () => Promise<{ room: Room }>, success: string) => {
     setError('')
@@ -54,6 +57,11 @@ export default function AdminPanel({ room, onRoom, onClose }: AdminPanelProps) {
           {players.map((player) => <option value={player.id} key={player.id}>{player.name}</option>)}
         </select>
       </label>
+      <motion.button className="adminDanger adminWide" {...buttonMotion} disabled={!playerId || players.length < 2} onClick={() => {
+        if (window.confirm(`Кікнути ${players.find((player) => player.id === playerId)?.name ?? 'гравця'} з гри?`)) {
+          void run(() => api.adminKickPlayer(room.code, playerId), 'Гравця кікнуто, його клітинки звільнено')
+        }
+      }}>Кікнути гравця</motion.button>
 
       <section className="adminSection">
         <strong>Власність клітинки</strong>

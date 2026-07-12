@@ -73,6 +73,7 @@ type Room struct {
 	Turn             int               `json:"turn"`
 	TurnDeadline     time.Time         `json:"turnDeadline"`
 	DecisionDeadline *time.Time        `json:"decisionDeadline,omitempty"`
+	WinnerID         string            `json:"winnerId,omitempty"`
 	CreatedAt        time.Time         `json:"createdAt"`
 }
 type Store struct {
@@ -311,7 +312,7 @@ func main() {
 			GiveMoney int    `json:"giveMoney"`
 			WantMoney int    `json:"wantMoney"`
 		}
-		if readJSON(r, &in) != nil || in.GiveMoney < 0 || in.WantMoney < 0 {
+		if readJSON(r, &in) != nil || in.GiveMoney < 0 || in.WantMoney < 0 || (in.GiveCell < 0 && in.WantCell < 0 && in.GiveMoney == 0 && in.WantMoney == 0) {
 			fail(w, 400, "Некоректна угода")
 			return
 		}
@@ -324,8 +325,28 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
+		if room.WinnerID != "" {
+			fail(w, 409, "Гра вже завершена")
+			return
+		}
+		if in.To == "" || in.To == u.ID || !containsPlayer(room, in.To) {
+			fail(w, 400, "Обери іншого гравця з цієї кімнати")
+			return
+		}
 		if room.Balances == nil {
 			room.Balances = map[string]int{}
+		}
+		if in.GiveCell >= 0 {
+			if _, property := propertyPrice(room.BoardSize, in.GiveCell); !property {
+				fail(w, 400, "Віддавати можна лише міську клітинку")
+				return
+			}
+		}
+		if in.WantCell >= 0 {
+			if _, property := propertyPrice(room.BoardSize, in.WantCell); !property {
+				fail(w, 400, "Отримувати можна лише міську клітинку")
+				return
+			}
 		}
 		if in.GiveCell >= 0 && room.Ownership[strconv.Itoa(in.GiveCell)] != u.ID {
 			fail(w, 403, "Ця клітинка не твоя")
@@ -358,6 +379,10 @@ func main() {
 		room, ok := store.rooms[code]
 		if !ok {
 			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if room.WinnerID != "" {
+			fail(w, 409, "Гра вже завершена")
 			return
 		}
 		if room.Balances == nil {
@@ -399,6 +424,8 @@ func main() {
 				room.Ownership[strconv.Itoa(t.WantCell)] = t.From
 			}
 			t.Status = "accepted"
+			markWinnerIfBankrupt(room, t.From)
+			markWinnerIfBankrupt(room, t.To)
 			writeJSON(w, 200, map[string]any{"room": room})
 			return
 		}
@@ -424,6 +451,7 @@ func main() {
 		}
 		room.CurrentChance = &card
 		room.Balances[user.ID] += card.Amount
+		markWinnerIfBankrupt(room, user.ID)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
@@ -446,6 +474,7 @@ func main() {
 		}
 		room.CurrentChance = &card
 		room.Balances[user.ID] += card.Amount
+		markWinnerIfBankrupt(room, user.ID)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("DELETE /api/rooms/{code}/chance", func(w http.ResponseWriter, r *http.Request) {
@@ -613,6 +642,10 @@ func main() {
 			fail(w, 409, "Зараз не твій хід")
 			return
 		}
+		if room.WinnerID != "" {
+			fail(w, 409, "Гра вже завершена")
+			return
+		}
 		if len(room.Positions) != len(room.Players) {
 			room.Positions = make([]int, len(room.Players))
 		}
@@ -644,6 +677,7 @@ func main() {
 				rent = max(price/4+room.Houses[strconv.Itoa(destination)]*50, 25)
 				room.Balances[user.ID] -= rent
 				room.Balances[ownerID] += rent
+				markWinnerIfBankrupt(room, user.ID)
 			}
 			autoFinished = true
 			room.Turn = (room.Turn + 1) % len(room.Players)
@@ -664,6 +698,10 @@ func main() {
 			fail(w, 409, "Зараз не твій хід")
 			return
 		}
+		if room.WinnerID != "" {
+			fail(w, 409, "Гра вже завершена")
+			return
+		}
 		casinoIndex := 8
 		if room.BoardSize == "large" {
 			casinoIndex = 12
@@ -678,6 +716,7 @@ func main() {
 			room.Balances = map[string]int{}
 		}
 		room.Balances[user.ID] += result
+		markWinnerIfBankrupt(room, user.ID)
 		room.Turn = (room.Turn + 1) % len(room.Players)
 		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		writeJSON(w, 200, map[string]any{"room": room, "result": result})
@@ -811,6 +850,39 @@ func main() {
 			room.Balances = map[string]int{}
 		}
 		room.Balances[in.PlayerID] += in.Delta
+		markWinnerIfBankrupt(room, in.PlayerID)
+		writeJSON(w, 200, map[string]any{"room": room})
+	})
+	protected.HandleFunc("POST /api/admin/rooms/{code}/kick", func(w http.ResponseWriter, r *http.Request) {
+		admin, ok := requireAdmin(w, r)
+		if !ok {
+			return
+		}
+		var in struct {
+			PlayerID string `json:"playerId"`
+		}
+		if readJSON(r, &in) != nil || in.PlayerID == "" || in.PlayerID == admin.ID {
+			fail(w, 400, "Не можна кікнути цього гравця")
+			return
+		}
+		code := strings.ToUpper(r.PathValue("code"))
+		store.mu.Lock()
+		defer store.mu.Unlock()
+		room, exists := store.rooms[code]
+		if !exists {
+			fail(w, 404, "Кімнату не знайдено")
+			return
+		}
+		if !containsPlayer(room, in.PlayerID) {
+			fail(w, 400, "Гравець не в цій кімнаті")
+			return
+		}
+		removePlayer(room, in.PlayerID)
+		if len(room.Players) == 0 {
+			delete(store.rooms, code)
+			writeJSON(w, 200, map[string]bool{"ok": true})
+			return
+		}
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/leave", func(w http.ResponseWriter, r *http.Request) {
@@ -823,20 +895,9 @@ func main() {
 			writeJSON(w, 200, map[string]bool{"ok": true})
 			return
 		}
-		next := room.Players[:0]
-		wasHost := false
-		for _, p := range room.Players {
-			if p.ID == user.ID {
-				wasHost = p.Host
-				continue
-			}
-			next = append(next, p)
-		}
-		room.Players = next
+		removePlayer(room, user.ID)
 		if len(room.Players) == 0 {
 			delete(store.rooms, code)
-		} else if wasHost {
-			room.Players[0].Host = true
 		}
 		writeJSON(w, 200, map[string]bool{"ok": true})
 	})
@@ -905,6 +966,28 @@ func sanitizeRoomProperties(room *Room) {
 	}
 }
 
+func markWinnerIfBankrupt(room *Room, bankruptID string) {
+	if room == nil || room.WinnerID != "" || room.Balances[bankruptID] > 0 {
+		return
+	}
+	bestID := ""
+	bestBalance := -1 << 60
+	for _, player := range room.Players {
+		if player.ID == bankruptID {
+			continue
+		}
+		if balance := room.Balances[player.ID]; balance > bestBalance {
+			bestID = player.ID
+			bestBalance = balance
+		}
+	}
+	if bestID != "" {
+		room.WinnerID = bestID
+		room.DecisionDeadline = nil
+		room.TurnDeadline = time.Time{}
+	}
+}
+
 func cornerReward(boardSize string, index int) int {
 	side := 11
 	if boardSize == "large" {
@@ -955,6 +1038,62 @@ func containsPlayer(room *Room, id string) bool {
 		}
 	}
 	return false
+}
+func removePlayer(room *Room, id string) {
+	if room == nil {
+		return
+	}
+	removedIndex := -1
+	wasHost := false
+	for index, player := range room.Players {
+		if player.ID == id {
+			removedIndex = index
+			wasHost = player.Host
+			break
+		}
+	}
+	if removedIndex < 0 {
+		return
+	}
+	room.Players = append(room.Players[:removedIndex], room.Players[removedIndex+1:]...)
+	if removedIndex < len(room.Positions) {
+		room.Positions = append(room.Positions[:removedIndex], room.Positions[removedIndex+1:]...)
+	}
+	delete(room.Balances, id)
+	for cell, owner := range room.Ownership {
+		if owner == id {
+			delete(room.Ownership, cell)
+			delete(room.Houses, cell)
+		}
+	}
+	trades := room.Trades[:0]
+	for _, trade := range room.Trades {
+		if trade.From != id && trade.To != id {
+			trades = append(trades, trade)
+		}
+	}
+	room.Trades = trades
+	if len(room.Players) == 0 {
+		room.Turn = 0
+		room.WinnerID = ""
+		return
+	}
+	if removedIndex < room.Turn {
+		room.Turn--
+	} else if room.Turn >= len(room.Players) {
+		room.Turn = 0
+	}
+	if wasHost {
+		room.Players[0].Host = true
+	}
+	if room.WinnerID == id {
+		room.WinnerID = ""
+	}
+	if room.Started && len(room.Players) == 1 {
+		room.WinnerID = room.Players[0].ID
+		room.TurnDeadline = time.Time{}
+		room.DecisionDeadline = nil
+	}
 }
 func mustUser(r *http.Request) User {
 	user, ok := r.Context().Value(userKey).(User)
