@@ -41,17 +41,21 @@ export default function GameScreen({ room, user, onExit }: Props) {
   }
 
   const selected=cells[selectedCell]
+  const userPlayerIndex=Math.max(0,players.findIndex(player=>player.id===user.id))
+  const userPosition=positions[userPlayerIndex]??0
+  const standingOnSelected=userPosition===selectedCell
   const baseRent=selected.price ? Math.max(10,Math.round(selected.price*.12/5)*5) : 0
   const oneHouse=baseRent*3
   const twoHouses=baseRent*7
   const threeHouses=baseRent*12
-  const canBuy=selected.kind==='city'&&!owned.includes(selectedCell)&&balance>=(selected.price||0)
+  const canBuy=standingOnSelected&&selected.kind==='city'&&!owned.includes(selectedCell)&&balance>=(selected.price||0)
   const buy=()=>{if(!canBuy)return;setBalance(value=>value-(selected.price||0));setOwned(value=>[...value,selectedCell]);playUiSound('success')}
 
   return <main className="classicGame">
     <header className="classicHeader"><div className="gameBrand"><span>КупиМісто</span><small>{room.code}</small></div><div className="topTurn">Хід {players[turn]?.name}</div><div className="gameTools"><button><Volume2/></button><button><Settings/></button><button onClick={onExit}><LogOut/><span>Вийти</span></button></div></header>
     <section className="boardOnly">
       <div className="rotateHint">Права кнопка: обертання. Колесо: масштаб</div>
+      <div className="gameBalanceHud"><small>МІЙ БАЛАНС</small><strong>{balance} ₴</strong></div>
       <ClassicBoard3D size={room.boardSize} positions={positions} players={players} dice={dice} rolling={rolling} onSelectCell={(index)=>{setSelectedCell(index);setCardOpen(true)}}/>
       {players.slice(0,6).map((player,index)=><div key={player.id} className={`cornerPlayer corner${index+1} ${turn===index?'current':''}`}>
         <div className={`cornerAvatar ${colors[index]}`}>{player.name.slice(0,1).toUpperCase()}<i/></div><span><strong>{player.name}</strong><small>{turn===index?'Зараз ходить':'1500 ₴'}</small></span>
@@ -66,8 +70,8 @@ export default function GameScreen({ room, user, onExit }: Props) {
         {selected.kind==='city'&&<>
           <div className="propertyPrice"><span>Ціна ділянки</span><strong>{selected.price} ₴</strong></div>
           <div className="rentTable"><div><span>Без будинку</span><b>{baseRent} ₴</b></div><div><span><Home/> 1 будинок</span><b>{oneHouse} ₴</b></div><div><span><Home/> 2 будинки</span><b>{twoHouses} ₴</b></div><div><span><Building2/> 3 будинки</span><b>{threeHouses} ₴</b></div></div>
-          <p className="propertyNote">Повний комплект одного кольору збільшує оренду. Вартість будинків додамо на етапі економіки.</p>
-          {owned.includes(selectedCell)?<div className="ownedLabel"><Check/> Це твоя власність</div>:<div className="propertyActions"><button className="buyProperty" disabled={!canBuy} onClick={buy}>Купити за {selected.price} ₴</button><button className="skipProperty" onClick={()=>setCardOpen(false)}>Не купувати</button></div>}
+          <p className="propertyNote">{standingOnSelected?'Твоя фішка стоїть тут. Ділянку можна придбати.':'Це режим перегляду. Купівля доступна лише тоді, коли твоя фішка зупинилась на цій клітинці.'}</p>
+          {owned.includes(selectedCell)?<div className="ownedLabel"><Check/> Це твоя власність</div>:<div className="propertyActions"><button className="buyProperty" disabled={!canBuy} onClick={buy}>{!standingOnSelected?'Спочатку стань на цю клітинку':balance<(selected.price||0)?'Недостатньо коштів':`Купити за ${selected.price} ₴`}</button><button className="skipProperty" onClick={()=>setCardOpen(false)}>Не купувати</button></div>}
         </>}
         {selected.kind!=='city'&&<p className="specialCellText">Ця клітинка не продається. Її дія спрацює після завершення ходу.</p>}
         <div className="panelBalance">Баланс: <strong>{balance} ₴</strong></div>
