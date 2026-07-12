@@ -14,28 +14,29 @@ export default function GameScreen({ room, user, onExit }: Props) {
   const [dice,setDice] = useState<[number,number]>([1,1])
   const [rolling,setRolling] = useState(false)
   const [turn,setTurn] = useState(0)
-  const [showTurn,setShowTurn] = useState(true)
+  const [turnNoticeId,setTurnNoticeId] = useState(1)
   const cells = useMemo(() => makeCells(room.boardSize),[room.boardSize])
 
-  useEffect(() => { const timer=window.setTimeout(()=>setShowTurn(false),1700); return()=>window.clearTimeout(timer) },[turn])
+
   const roll = () => {
     if (rolling || players[turn]?.id !== user.id) return
     setRolling(true); playUiSound('click')
     window.setTimeout(() => {
       const a=1+Math.floor(Math.random()*6), b=1+Math.floor(Math.random()*6)
       setDice([a,b]); setPositions(old=>old.map((p,i)=>i===turn?(p+a+b)%cells.length:p)); setRolling(false); playUiSound('success')
-      window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setShowTurn(true) },750)
+      window.setTimeout(()=>{ setTurn(value=>(value+1)%players.length); setTurnNoticeId(value=>value+1) },750)
     },700)
   }
 
   return <main className="classicGame">
     <header className="classicHeader"><div className="gameBrand"><span>КупиМісто</span><small>{room.code}</small></div><div className="topTurn">Хід {players[turn]?.name}</div><div className="gameTools"><button><Volume2/></button><button><Settings/></button><button onClick={onExit}><LogOut/><span>Вийти</span></button></div></header>
     <section className="boardOnly">
+      <div className="rotateHint">Затисни праву кнопку миші та рухай, щоб обертати дошку</div>
       <ClassicBoard3D size={room.boardSize} positions={positions} players={players} dice={dice} rolling={rolling}/>
       {players.slice(0,6).map((player,index)=><div key={player.id} className={`cornerPlayer corner${index+1} ${turn===index?'current':''}`}>
         <div className={`cornerAvatar ${colors[index]}`}>{player.name.slice(0,1).toUpperCase()}<i/></div><span><strong>{player.name}</strong><small>{turn===index?'Зараз ходить':'1500 ₴'}</small></span>
       </div>)}
-      <AnimatePresence>{showTurn&&<motion.div className="turnAnnouncement" initial={{opacity:0,scale:.88,y:20}} animate={{opacity:1,scale:1,y:0}} exit={{opacity:0,y:-230,scale:.7}} transition={{duration:.5,ease:[.16,1,.3,1]}}><small>НАСТУПНИЙ ХІД</small><strong>{players[turn]?.id===user.id?'Твій хід':`Хід: ${players[turn]?.name}`}</strong></motion.div>}</AnimatePresence>
+      <AnimatePresence>{<motion.div key={turnNoticeId} className="turnAnnouncement" initial={{opacity:0,scale:.9,y:26}} animate={{opacity:[0,1,1,0],scale:[.9,1,1,.82],y:[26,0,0,-260]}} transition={{duration:1.75,times:[0,.16,.62,1],ease:[.16,1,.3,1]}}><small>НАСТУПНИЙ ХІД</small><strong>{players[turn]?.id===user.id?'Твій хід':`Хід: ${players[turn]?.name}`}</strong></motion.div>}</AnimatePresence>
       <div className="diceAction"><span>{dice[0]} + {dice[1]}</span><button onClick={roll} disabled={rolling||players[turn]?.id!==user.id}>{rolling?'Кубики летять':'Кинути кубики'}</button></div>
     </section>
   </main>

@@ -1,6 +1,6 @@
-import { Canvas, useFrame } from '@react-three/fiber'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { ContactShadows, Environment, Float, RoundedBox, Text } from '@react-three/drei'
-import { useMemo, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import type { Group, Mesh } from 'three'
 import type { BoardSize, Player } from '../api'
 
@@ -65,16 +65,59 @@ function Die({ position, value, rolling }: { position:[number,number,number]; va
 
 function BoardModel({ size, positions, players, dice, rolling }: { size:BoardSize; positions:number[]; players:Player[]; dice:[number,number]; rolling:boolean }) {
   const group = useRef<Group>(null)
+  const drag = useRef({ active:false, x:0, y:0, targetX:-0.04, targetY:0 })
+  const { gl } = useThree()
   const cells = useMemo(() => makeCells(size), [size])
+
+  useEffect(() => {
+    const canvas = gl.domElement
+    const context = (event: MouseEvent) => event.preventDefault()
+    const down = (event: PointerEvent) => {
+      if (event.button !== 2) return
+      event.preventDefault()
+      drag.current.active = true
+      drag.current.x = event.clientX
+      drag.current.y = event.clientY
+      canvas.setPointerCapture?.(event.pointerId)
+      canvas.classList.add('isRotating')
+    }
+    const move = (event: PointerEvent) => {
+      if (!drag.current.active || (event.buttons & 2) !== 2) return
+      const dx = event.clientX - drag.current.x
+      const dy = event.clientY - drag.current.y
+      drag.current.x = event.clientX
+      drag.current.y = event.clientY
+      drag.current.targetY += dx * 0.008
+      drag.current.targetX = Math.max(-0.34, Math.min(0.28, drag.current.targetX + dy * 0.005))
+    }
+    const up = (event: PointerEvent) => {
+      if (event.button !== 2) return
+      drag.current.active = false
+      canvas.releasePointerCapture?.(event.pointerId)
+      canvas.classList.remove('isRotating')
+    }
+    canvas.addEventListener('contextmenu', context)
+    canvas.addEventListener('pointerdown', down)
+    canvas.addEventListener('pointermove', move)
+    canvas.addEventListener('pointerup', up)
+    canvas.addEventListener('pointercancel', up)
+    return () => {
+      canvas.removeEventListener('contextmenu', context)
+      canvas.removeEventListener('pointerdown', down)
+      canvas.removeEventListener('pointermove', move)
+      canvas.removeEventListener('pointerup', up)
+      canvas.removeEventListener('pointercancel', up)
+    }
+  }, [gl])
   const side = size === 'large' ? 15 : 11
   const edge = side - 1
   const boardWidth = edge + 1.7
   const playerColors = ['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44']
 
-  useFrame((state) => {
+  useFrame(() => {
     if (!group.current) return
-    group.current.rotation.y += (state.pointer.x * .09 - group.current.rotation.y) * .025
-    group.current.rotation.x += ((-.05 + state.pointer.y * .035) - group.current.rotation.x) * .025
+    group.current.rotation.y += (drag.current.targetY - group.current.rotation.y) * .12
+    group.current.rotation.x += (drag.current.targetX - group.current.rotation.x) * .12
   })
 
   return <group ref={group}>
@@ -82,7 +125,7 @@ function BoardModel({ size, positions, players, dice, rolling }: { size:BoardSiz
       <meshStandardMaterial color="#20202a" roughness={.68}/>
     </RoundedBox>
     <RoundedBox args={[boardWidth-.3,.18,boardWidth-.3]} radius={.12} smoothness={4} position={[0,.25,0]} receiveShadow>
-      <meshStandardMaterial color="#dce7da" roughness={.78}/>
+      <meshStandardMaterial color="#c9ddca" roughness={.72} metalness={.015}/>
     </RoundedBox>
     {cells.map((cell,index) => {
       const [x,,z] = boardPosition(index,side)
@@ -90,7 +133,7 @@ function BoardModel({ size, positions, players, dice, rolling }: { size:BoardSiz
       const rotation = index <= edge ? 0 : index <= edge*2 ? Math.PI/2 : index <= edge*3 ? Math.PI : -Math.PI/2
       return <group key={index} position={[x,.38,z]} rotation={[0,rotation,0]}>
         <RoundedBox args={[corner?1.05:.78,.10,1.05]} radius={.035} smoothness={2} receiveShadow>
-          <meshStandardMaterial color={corner?cell.color:'#f3efe3'} roughness={.7}/>
+          <meshStandardMaterial color={corner?cell.color:'#eee9d9'} roughness={.7}/>
         </RoundedBox>
         {!corner && <mesh position={[0,.075,-.38]}><boxGeometry args={[.76,.035,.26]}/><meshStandardMaterial color={cell.color}/></mesh>}
         <Text position={[0,.095,.05]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>
@@ -109,7 +152,7 @@ function BoardModel({ size, positions, players, dice, rolling }: { size:BoardSiz
 export default function ClassicBoard3D(props: { size:BoardSize; positions:number[]; players:Player[]; dice:[number,number]; rolling:boolean }) {
   const camera = props.size === 'large' ? [0,12.5,13.8] as [number,number,number] : [0,10.8,12.5] as [number,number,number]
   return <Canvas dpr={[1,1.6]} shadows camera={{ position:camera, fov:38 }} gl={{ antialias:true }}>
-    <color attach="background" args={['#dce7da']}/><ambientLight intensity={1.6}/><directionalLight position={[7,12,5]} intensity={3.1} castShadow shadow-mapSize={[1024,1024]}/>
+    <color attach="background" args={['#b8d1bd']}/><ambientLight intensity={1.05}/><hemisphereLight args={['#e8f0df','#49604f',1.25]}/><directionalLight position={[7,12,5]} intensity={2.5} castShadow shadow-mapSize={[1024,1024]}/>
     <BoardModel {...props}/><ContactShadows position={[0,-.2,0]} opacity={.22} scale={19} blur={2.5} far={8}/><Environment preset="city"/>
   </Canvas>
 }
