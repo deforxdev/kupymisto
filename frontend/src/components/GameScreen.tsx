@@ -53,6 +53,7 @@ export default function GameScreen({room,user,onExit}:Props){
    const nextRoom=result.room
    const nextDice=safeDice(nextRoom.dice)
    const nextPosition=nextRoom.positions?.[turn]??positions[turn]??0
+   const autoFinished=result.autoFinished
    setLiveRoom(nextRoom)
    setDice(nextDice)
    setPositions(nextRoom.positions)
@@ -62,7 +63,8 @@ export default function GameScreen({room,user,onExit}:Props){
     setSelected(nextPosition)
     setTimeout(()=>{
      const landed=cells[nextPosition]
-     if(landed.kind==='city'){const decision=nextRoom.decisionSeconds||45;setPropertyOpen(true);setTimeLeft(decision);setPhase('decision')}
+     if(autoFinished){setTurn(nextRoom.turn);setPhase('roll');setTimeLeft(nextRoom.turnSeconds||60)}
+     else if(landed.kind==='city'){const decision=nextRoom.decisionSeconds||45;setPropertyOpen(true);setTimeLeft(decision);setPhase('decision')}
      else if(landed.kind==='chance'){setPendingDeck('chance');setPhase('card')}
      else if(landed.kind==='tax'){setPendingDeck('bad');setPhase('card')}
      else finishTurn()

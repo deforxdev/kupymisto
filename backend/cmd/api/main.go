@@ -520,6 +520,11 @@ func main() {
 			fail(w, 404, "Кімнату не знайдено")
 			return
 		}
+		actualPrice, isProperty := propertyPrice(room.BoardSize, in.CellIndex)
+		if !isProperty || in.Price != actualPrice {
+			fail(w, 400, "Цю клітинку не можна купити")
+			return
+		}
 		if room.Ownership == nil {
 			room.Ownership = map[string]string{}
 		}
@@ -531,11 +536,11 @@ func main() {
 		if room.Balances == nil {
 			room.Balances = map[string]int{}
 		}
-		if room.Balances[user.ID] < in.Price {
+		if room.Balances[user.ID] < actualPrice {
 			fail(w, 409, "Недостатньо коштів")
 			return
 		}
-		room.Balances[user.ID] -= in.Price
+		room.Balances[user.ID] -= actualPrice
 		room.Ownership[key] = user.ID
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
@@ -616,8 +621,22 @@ func main() {
 		if previousPosition+a+b >= boardCells {
 			room.Balances[user.ID] += 200
 		}
-		room.Positions[room.Turn] = (previousPosition + a + b) % boardCells
-		writeJSON(w, 200, map[string]any{"room": room})
+		destination := (previousPosition + a + b) % boardCells
+		room.Positions[room.Turn] = destination
+		rent := 0
+		autoFinished := false
+		ownerID := room.Ownership[strconv.Itoa(destination)]
+		if ownerID != "" {
+			price, isProperty := propertyPrice(room.BoardSize, destination)
+			if isProperty && ownerID != user.ID {
+				rent = max(price/4+room.Houses[strconv.Itoa(destination)]*50, 25)
+				room.Balances[user.ID] -= rent
+				room.Balances[ownerID] += rent
+			}
+			autoFinished = true
+			room.Turn = (room.Turn + 1) % len(room.Players)
+		}
+		writeJSON(w, 200, map[string]any{"room": room, "rent": rent, "autoFinished": autoFinished})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {
 		code := strings.ToUpper(r.PathValue("code"))
@@ -674,6 +693,27 @@ func main() {
 
 func validAgeGroup(value string) bool {
 	return value == "10-12" || value == "14-15" || value == "18-20"
+}
+
+func propertyPrice(boardSize string, index int) (int, bool) {
+	side := 11
+	if boardSize == "large" {
+		side = 15
+	}
+	if index < 0 || index >= side*4-4 || index%(side-1) == 0 || index%7 == 0 || index%9 == 0 {
+		return 0, false
+	}
+	if index%5 == 0 {
+		return 200, true
+	}
+	city := 0
+	for current := 0; current <= index; current++ {
+		if current%(side-1) == 0 || current%7 == 0 || current%9 == 0 || current%5 == 0 {
+			continue
+		}
+		city++
+	}
+	return 100 + (city%9)*30, true
 }
 
 type DeckConfig struct {
