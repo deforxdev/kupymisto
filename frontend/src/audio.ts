@@ -1,10 +1,37 @@
 let context: AudioContext | null = null
 let ambience: { gain: GainNode; oscillators: OscillatorNode[] } | null = null
+let masterGain: GainNode | null = null
+let muted = typeof localStorage !== 'undefined' ? localStorage.getItem('kupymisto_audio_muted') !== '0' : true
+const activeAssets = new Map<HTMLAudioElement, number>()
 
 function getContext() {
   if (!context) context = new AudioContext()
   if (context.state === 'suspended') void context.resume()
   return context
+}
+
+function getMasterGain() {
+ const ctx = getContext()
+ if (!masterGain) {
+  masterGain = ctx.createGain()
+  masterGain.gain.value = muted ? 0 : 1
+  masterGain.connect(ctx.destination)
+ }
+ return masterGain
+}
+
+export function setAudioMuted(value: boolean) {
+ muted = value
+ if (typeof localStorage !== 'undefined') localStorage.setItem('kupymisto_audio_muted', value ? '1' : '0')
+ if (masterGain && context) {
+  masterGain.gain.cancelScheduledValues(context.currentTime)
+  masterGain.gain.setTargetAtTime(value ? 0 : 1, context.currentTime, .025)
+ }
+ activeAssets.forEach((volume, audio) => { audio.volume = value ? 0 : volume })
+}
+
+export function isAudioMuted() {
+ return muted
 }
 
 
@@ -14,7 +41,7 @@ export async function unlockAudio() {
   const buffer = ctx.createBuffer(1, 1, ctx.sampleRate)
   const source = ctx.createBufferSource()
   source.buffer = buffer
-  source.connect(ctx.destination)
+ source.connect(getMasterGain())
   source.start()
 }
 
@@ -34,7 +61,7 @@ export function playUiSound(kind: 'select' | 'click' | 'success' = 'click') {
   gain.gain.setValueAtTime(0.0001, now)
   gain.gain.exponentialRampToValueAtTime(0.085, now + 0.012)
   gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.2)
-  oscillator.connect(filter).connect(gain).connect(ctx.destination)
+ oscillator.connect(filter).connect(gain).connect(getMasterGain())
   oscillator.start(now)
   oscillator.stop(now + 0.22)
 }
@@ -48,7 +75,7 @@ export function startAmbience() {
   filter.type = 'lowpass'
   filter.frequency.value = 520
   filter.Q.value = 0.7
-  master.connect(filter).connect(ctx.destination)
+ master.connect(filter).connect(getMasterGain())
 
   const oscillators = [110, 164.81, 220].map((frequency, index) => {
     const oscillator = ctx.createOscillator()
@@ -93,7 +120,7 @@ export function playDiceRoll() {
     gain.gain.setValueAtTime(.0001, time)
     gain.gain.exponentialRampToValueAtTime(.045 * (1 - index / 12), time + .006)
     gain.gain.exponentialRampToValueAtTime(.0001, time + .055)
-    oscillator.connect(filter).connect(gain).connect(ctx.destination)
+    oscillator.connect(filter).connect(gain).connect(getMasterGain())
     oscillator.start(time); oscillator.stop(time + .065)
   })
 }
@@ -114,7 +141,7 @@ export function playPawnMove(steps: number) {
     gain.gain.setValueAtTime(0.0001, time)
     gain.gain.exponentialRampToValueAtTime(0.075, time + 0.008)
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.085)
-    oscillator.connect(filter).connect(gain).connect(ctx.destination)
+    oscillator.connect(filter).connect(gain).connect(getMasterGain())
     oscillator.start(time)
     oscillator.stop(time + 0.1)
   }
@@ -123,7 +150,10 @@ export function playPawnMove(steps: number) {
 export async function playAssetSound(name: string, fallback?: () => void) {
   try {
     const audio = new Audio(`/sounds/${name}`)
-    audio.volume = 0.55
+    const volume = 0.55
+    audio.volume = muted ? 0 : volume
+    activeAssets.set(audio, volume)
+    audio.addEventListener('ended', () => activeAssets.delete(audio), { once: true })
     await audio.play()
   } catch {
     fallback?.()

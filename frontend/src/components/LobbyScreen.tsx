@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, Copy, DoorOpen, LogOut, Plus, Users, X } from 'lucide-react'
+import { ArrowRight, Check, Copy, DoorOpen, Home, LogOut, Plus, Users, X } from 'lucide-react'
 import { api, clearActiveRoomCode, clearToken, getActiveRoomCode, setActiveRoomCode, type BoardSize, type Room, type User } from '../api'
 import GameScreen from './GameScreen'
 import { playUiSound } from '../audio'
 
-type Props = { user: User; onLogout: () => void }
+type Props = { user: User; onLogout: () => void; onHome: () => void }
 
-export default function LobbyScreen({ user, onLogout }: Props) {
+export default function LobbyScreen({ user, onLogout, onHome }: Props) {
   const [room, setRoom] = useState<Room | null>(null)
   const [roomName, setRoomName] = useState(`${user.name}, місто і компанія`)
   const [maxPlayers, setMaxPlayers] = useState(4)
@@ -79,7 +79,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
     const me = room.players.find(player => player.id === user.id)
     const host = room.players.find(player => player.host)
     return <main className="roomScreen">
-      <header className="lobbyHeader"><a className="brand" href="#"><span>Купи<span>Місто</span></span></a><button className="quietButton" onClick={leave}><X/> Вийти з кімнати</button></header>
+      <header className="lobbyHeader"><button className="brand brandButton" onClick={() => { void leave(); onHome() }}><span>Купи<span>Місто</span></span></button><button className="quietButton" onClick={leave}><X/> Вийти з кімнати</button></header>
       <motion.section className="roomLobby" initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }}>
         <div className="roomTop">
           <div><span className="sectionNo">ПРИВАТНА КІМНАТА</span><h1>{room.name}</h1><p>Гравці заходять напряму за кодом. Ніякого пошуку в загальному списку.</p></div>
@@ -97,7 +97,7 @@ export default function LobbyScreen({ user, onLogout }: Props) {
   }
 
   return <main className="lobbyScreen">
-    <header className="lobbyHeader"><a className="brand" href="#"><span>Купи<span>Місто</span></span></a><div className="userMenu"><div className="miniAvatar">{user.name.slice(0, 1).toUpperCase()}</div><span><strong>{user.name}</strong><small>{user.email}</small></span><button onClick={logout} aria-label="Вийти з акаунта"><LogOut/></button></div></header>
+    <header className="lobbyHeader"><button className="brand brandButton" onClick={onHome}><span>Купи<span>Місто</span></span></button><div className="userMenu"><button className="quietButton homeButton" onClick={onHome}><Home/> Головна</button><div className="miniAvatar">{user.name.slice(0, 1).toUpperCase()}</div><span><strong>{user.name}</strong><small>{user.email}</small></span><button onClick={logout} aria-label="Вийти з акаунта"><LogOut/></button></div></header>
     <motion.section className="lobbyHome" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div className="lobbyIntro"><span className="sectionNo">ІГРОВЕ ЛОБІ</span><h1>Збирай своїх.<br/><em>Без зайвих очей.</em></h1><p>Створи приватну кімнату або введи код, який надіслав друг. Публічного списку кімнат тут немає, і це правильно.</p></div>
       <div className="lobbyForms">

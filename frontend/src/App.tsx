@@ -4,7 +4,7 @@ import Lenis from 'lenis'
 import { ArrowDownRight, ArrowUpRight, Users, Volume2, VolumeX } from 'lucide-react'
 import BoardScene from './components/BoardScene'
 import AgeGate, { type AgeGroup } from './components/AgeGate'
-import { playUiSound, startAmbience, stopAmbience } from './audio'
+import { playUiSound, setAudioMuted, startAmbience, stopAmbience } from './audio'
 import AuthScreen from './components/AuthScreen'
 import LobbyScreen from './components/LobbyScreen'
 import { api, clearToken, getToken, type User } from './api'
@@ -47,10 +47,16 @@ function App() {
   const [screen, setScreen] = useState<'home' | 'auth' | 'lobby'>('home')
   const [user, setUser] = useState<User | null>(null)
   const reduceMotion = useReducedMotion()
+  const navigate = (path: '/' | '/lobby') => { window.history.pushState({}, '', path); setScreen(path === '/lobby' ? 'lobby' : 'home') }
+  useEffect(() => {
+    const onPopState = () => setScreen(window.location.pathname === '/lobby' ? 'lobby' : 'home')
+    window.addEventListener('popstate', onPopState)
+    return () => window.removeEventListener('popstate', onPopState)
+  }, [])
 
   useEffect(() => {
     if (!getToken()) return
-    api.me().then(({ user }) => { setUser(user); setScreen('lobby') }).catch(() => clearToken())
+    api.me().then(({ user }) => { setUser(user); navigate('/lobby') }).catch(() => clearToken())
   }, [])
 
   useEffect(() => {
@@ -64,7 +70,8 @@ function App() {
 
   const openGame = () => {
     if (sound) playUiSound('click')
-    setScreen(user ? 'lobby' : 'auth')
+    if (user) navigate('/lobby')
+    else setScreen('auth')
   }
 
   const selectAge = (group: AgeGroup) => {
@@ -73,19 +80,19 @@ function App() {
   }
 
   const toggleSound = () => {
-    if (sound) stopAmbience()
-    else { startAmbience(); playUiSound('click') }
+    if (sound) { stopAmbience(); setAudioMuted(true) }
+    else { setAudioMuted(false); startAmbience(); playUiSound('click') }
     setSound(!sound)
   }
 
-  if (screen === 'auth') return <AuthScreen onBack={() => setScreen('home')} onSuccess={(nextUser) => { setUser(nextUser); setScreen('lobby') }} />
-  if (screen === 'lobby' && user) return <LobbyScreen user={user} onLogout={() => { setUser(null); setScreen('home') }} />
+  if (screen === 'auth') return <AuthScreen onBack={() => navigate('/')} onSuccess={(nextUser) => { setUser(nextUser); navigate('/lobby') }} />
+  if (screen === 'lobby' && user) return <LobbyScreen user={user} onHome={() => navigate('/')} onLogout={() => { setUser(null); navigate('/') }} />
 
   return <>
     <AnimatePresence>{!ageGroup && <AgeGate onSelect={selectAge} />}</AnimatePresence>
     <div className="grain" />
     <header>
-      <a className="brand" href="#top" aria-label="КупиМісто, на головну"><Mark /><span>Купи<span>Місто</span></span></a>
+      <a className="brand" href="/" onClick={(event) => { event.preventDefault(); navigate('/') }} aria-label="КупиМісто, на головну"><Mark /><span>Купи<span>Місто</span></span></a>
       <nav aria-label="Головна навігація"><a href="#rules">Як грати</a><a href="#mood">Настрій</a><a href="#about">Про гру</a></nav>
       <button className="sound" onClick={toggleSound} aria-label={sound ? 'Вимкнути звук' : 'Увімкнути звук'}>{sound ? <Volume2 /> : <VolumeX />}<span>{sound ? 'Звук є' : 'Без звуку'}</span></button>
     </header>

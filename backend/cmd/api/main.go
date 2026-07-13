@@ -74,6 +74,9 @@ type Room struct {
 	TurnDeadline     time.Time         `json:"turnDeadline"`
 	DecisionDeadline *time.Time        `json:"decisionDeadline,omitempty"`
 	WinnerID         string            `json:"winnerId,omitempty"`
+	Round            int               `json:"round"`
+	RoundLimit       int               `json:"roundLimit"`
+	Capital          map[string]int    `json:"capital,omitempty"`
 	CreatedAt        time.Time         `json:"createdAt"`
 }
 type Store struct {
@@ -223,7 +226,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, TurnDeadline: time.Now().Add(60 * time.Second), CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, RoundLimit: 30, TurnDeadline: time.Now().Add(60 * time.Second), CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -529,11 +532,12 @@ func main() {
 		if room.Balances == nil {
 			room.Balances = map[string]int{}
 		}
-		if room.Balances[user.ID] < 100 {
+		houseCost := housePrice(room.Houses[key])
+		if room.Balances[user.ID] < houseCost {
 			fail(w, 409, "Недостатньо коштів")
 			return
 		}
-		room.Balances[user.ID] -= 100
+		room.Balances[user.ID] -= houseCost
 		room.Houses[key]++
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
@@ -628,6 +632,12 @@ func main() {
 		}
 		room.Started = true
 		room.Turn = 0
+		room.Round = 0
+		if room.RoundLimit <= 0 {
+			room.RoundLimit = 30
+		}
+		room.Capital = nil
+		room.WinnerID = ""
 		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		room.DecisionDeadline = nil
 		writeJSON(w, 200, map[string]any{"room": room})
@@ -684,8 +694,7 @@ func main() {
 				markWinnerIfBankrupt(room, user.ID)
 			}
 			autoFinished = true
-			room.Turn = (room.Turn + 1) % len(room.Players)
-			room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
+			advanceTurn(room)
 		} else if _, isProperty := propertyPrice(room.BoardSize, destination); isProperty {
 			deadline := time.Now().Add(time.Duration(room.DecisionSeconds) * time.Second)
 			room.DecisionDeadline = &deadline
@@ -706,10 +715,7 @@ func main() {
 			fail(w, 409, "Гра вже завершена")
 			return
 		}
-		casinoIndex := 8
-		if room.BoardSize == "large" {
-			casinoIndex = 12
-		}
+		casinoIndex := casinoCellIndex(room.BoardSize)
 		if len(room.Positions) != len(room.Players) || room.Positions[room.Turn] != casinoIndex {
 			fail(w, 409, "Спочатку потрібно стати на казино")
 			return
@@ -721,8 +727,7 @@ func main() {
 		}
 		room.Balances[user.ID] += result
 		markWinnerIfBankrupt(room, user.ID)
-		room.Turn = (room.Turn + 1) % len(room.Players)
-		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
+		advanceTurn(room)
 		writeJSON(w, 200, map[string]any{"room": room, "result": result})
 	})
 	protected.HandleFunc("POST /api/rooms/{code}/finish-turn", func(w http.ResponseWriter, r *http.Request) {
@@ -739,9 +744,8 @@ func main() {
 			fail(w, 409, "Зараз не твій хід")
 			return
 		}
-		room.Turn = (room.Turn + 1) % len(room.Players)
+		advanceTurn(room)
 		room.DecisionDeadline = nil
-		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		writeJSON(w, 200, map[string]any{"room": room})
 	})
 	protected.HandleFunc("PATCH /api/admin/rooms/{code}/ownership", func(w http.ResponseWriter, r *http.Request) {
@@ -976,6 +980,10 @@ func propertyGroup(boardSize string, index int) (int, bool) {
 	return 0, false
 }
 
+func housePrice(existing int) int {
+	return 100 + max(existing, 0)*50
+}
+
 func ownsCompletePropertyGroup(room *Room, playerID string, index int) bool {
 	group, ok := propertyGroup(room.BoardSize, index)
 	if !ok {
@@ -998,6 +1006,60 @@ func ownsCompletePropertyGroup(room *Room, playerID string, index int) bool {
 		}
 	}
 	return found
+}
+
+func advanceTurn(room *Room) {
+	if room == nil || len(room.Players) == 0 || room.WinnerID != "" {
+		return
+	}
+	room.Turn = (room.Turn + 1) % len(room.Players)
+	if room.Turn == 0 {
+		room.Round++
+		if room.RoundLimit <= 0 {
+			room.RoundLimit = 30
+		}
+		if room.Round >= room.RoundLimit {
+			finalizeGame(room)
+			return
+		}
+	}
+	room.TurnDeadline = time.Now().Add(time.Duration(max(room.TurnSeconds, 60)) * time.Second)
+}
+
+func finalizeGame(room *Room) {
+	if room == nil || room.WinnerID != "" {
+		return
+	}
+	room.Capital = map[string]int{}
+	bestID := ""
+	bestCapital := -1 << 60
+	for _, player := range room.Players {
+		capital := room.Balances[player.ID]
+		for cell, owner := range room.Ownership {
+			if owner != player.ID {
+				continue
+			}
+			index, err := strconv.Atoi(cell)
+			if err != nil {
+				continue
+			}
+			price, property := propertyPrice(room.BoardSize, index)
+			if property {
+				capital += price
+			}
+			capital += room.Houses[cell] * 100
+		}
+		room.Capital[player.ID] = capital
+		if capital > bestCapital {
+			bestID = player.ID
+			bestCapital = capital
+		}
+	}
+	if bestID != "" {
+		room.WinnerID = bestID
+	}
+	room.DecisionDeadline = nil
+	room.TurnDeadline = time.Time{}
 }
 
 func sanitizeRoomProperties(room *Room) {
@@ -1055,6 +1117,9 @@ func cornerReward(boardSize string, index int) int {
 	if boardSize == "large" {
 		side = 15
 	}
+	if index == casinoCellIndex(boardSize) {
+		return 0
+	}
 	switch index {
 	case side - 1:
 		return 100
@@ -1065,6 +1130,14 @@ func cornerReward(boardSize string, index int) int {
 	default:
 		return 0
 	}
+}
+
+func casinoCellIndex(boardSize string) int {
+	side := 11
+	if boardSize == "large" {
+		side = 15
+	}
+	return (side - 1) * 3
 }
 
 type DeckConfig struct {
