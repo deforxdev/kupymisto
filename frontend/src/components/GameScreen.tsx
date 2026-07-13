@@ -40,7 +40,7 @@ export default function GameScreen({room,user,onExit}:Props){
   setChance(null)
   setPhase('roll')
   setTimeLeft(liveRoom.turnSeconds||60)
-  void api.finishTurn(room.code).then(({room:r})=>{setLiveRoom(r)}).catch(()=>null).finally(()=>{finishing.current=false})
+  void api.finishTurn(room.code).then(({room:r})=>{setLiveRoom(r)}).catch(cause=>{if(cause instanceof Error)setGameError(cause.message)}).finally(()=>{finishing.current=false})
  }
  useEffect(()=>{const t=setInterval(()=>api.getRoom(room.code).then(({room:r})=>{setLiveRoom(r);if(r.positions?.length===players.length)setPositions(r.positions);setDice(safeDice(r.dice));if(r.currentChance&&r.currentChance.nonce!==shownNonce.current){shownNonce.current=r.currentChance.nonce;setDrawNonce(r.currentChance.nonce);setChance(r.currentChance)}}).catch(cause=>{if(cause instanceof Error&&'status' in cause&&cause.status===404)onExit()}),900);return()=>clearInterval(t)},[room.code,players.length])
  useEffect(()=>{
@@ -113,7 +113,7 @@ export default function GameScreen({room,user,onExit}:Props){
  const closeCard=async()=>{setChance(null);if(players[turn]?.id===user.id){await api.clearChance(room.code).catch(()=>null);finishTurn()}}
  const spinCasino=async()=>{void playAssetSound('casino-spin.ogg',()=>playUiSound('click'));const result=await api.casino(room.code);setLiveRoom(result.room);setCasinoOpen(false);setPhase('roll')}
  const skipCasino=()=>{setCasinoOpen(false);finishTurn()}
- const buy=async()=>{if(!standing||ownerId||balance<(current.price||0))return;void playAssetSound('purchase.ogg',()=>playUiSound('success'));setLiveRoom((await api.purchaseProperty(room.code,{cellIndex:selected,price:current.price||0})).room);finishTurn()}
+ const buy=async()=>{if(!standing||ownerId||balance<(current.price||0))return;setGameError('');try{void playAssetSound('purchase.ogg',()=>playUiSound('success'));setLiveRoom((await api.purchaseProperty(room.code,{cellIndex:selected,price:current.price||0})).room);finishTurn()}catch(cause){setGameError(cause instanceof Error?cause.message:'Не вдалося купити клітинку')}}
  const buildHouse=async()=>{if(ownerId!==user.id||!current.price||balance<nextHouseCost||currentHouses>=maxHouses)return;void playAssetSound('house-place.ogg',()=>playUiSound('success'));setLiveRoom((await api.buildHouse(room.code,{cellIndex:selected})).room)}
  const toggleGameSound=()=>{const next=!soundEnabled;setSoundEnabled(next);setAudioMuted(!next)}
  const cycleTheme=()=>{const next:BoardTheme=boardTheme==='meadow'?'midnight':boardTheme==='midnight'?'sunset':'meadow';setBoardTheme(next);localStorage.setItem('kupymisto_board_theme',next)}

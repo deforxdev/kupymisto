@@ -937,7 +937,7 @@ func propertyPrice(boardSize string, index int) (int, bool) {
 		side = 15
 	}
 	lane := index % (side - 1)
-	if index < 0 || index >= side*4-4 || lane == 0 || index == side-3 || lane == 3 || lane == 7 {
+	if index < 0 || index >= side*4-4 || lane == 0 || index == casinoCellIndex(boardSize) || lane == 3 || lane == 7 {
 		return 0, false
 	}
 	if lane == 5 {
@@ -946,7 +946,7 @@ func propertyPrice(boardSize string, index int) (int, bool) {
 	city := 0
 	for current := 0; current <= index; current++ {
 		currentLane := current % (side - 1)
-		if currentLane == 0 || current == side-3 || currentLane == 3 || currentLane == 7 || currentLane == 5 {
+		if currentLane == 0 || current == casinoCellIndex(boardSize) || currentLane == 3 || currentLane == 7 || currentLane == 5 {
 			continue
 		}
 		city++
@@ -969,7 +969,7 @@ func propertyGroup(boardSize string, index int) (int, bool) {
 	city := 0
 	for current := 0; current <= index; current++ {
 		currentLane := current % (side - 1)
-		if currentLane == 0 || current == side-3 || currentLane == 3 || currentLane == 7 || currentLane == 5 {
+		if currentLane == 0 || current == casinoCellIndex(boardSize) || currentLane == 3 || currentLane == 7 || currentLane == 5 {
 			continue
 		}
 		if current == index {
