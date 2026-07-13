@@ -76,6 +76,8 @@ function App() {
 
   const selectAge = (group: AgeGroup) => {
     setAgeGroup(group)
+    setAudioMuted(false)
+    startAmbience()
     setSound(true)
   }
 
