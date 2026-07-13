@@ -3133,6 +3133,12 @@ footer p {
 }
 .boardOnly {
   background: #277c68;
+  isolation: isolate;
+}
+.boardOnly canvas {
+  position: relative;
+  z-index: 1;
+  filter: saturate(1.06) contrast(1.04);
 }
 .gameStartOverlay {
   inset: 0;

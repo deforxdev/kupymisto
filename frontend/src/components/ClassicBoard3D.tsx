@@ -1,14 +1,22 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { RoundedBox, Text } from "@react-three/drei";
-import { useEffect, useMemo, useRef } from "react";
+import { RoundedBox, Sparkles, Text } from "@react-three/drei";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ACESFilmicToneMapping,
   Color,
   SRGBColorSpace,
+  type CanvasTexture,
   type Group,
+  type MeshStandardMaterial,
   type PerspectiveCamera,
 } from "three";
 import type { BoardSize, Player } from "../api";
+import {
+  makeFeltTexture,
+  makeNoiseMap,
+  makePaperTexture,
+  makeWoodTexture,
+} from "../boardTextures";
 
 export type BoardCell = {
   name: string;
@@ -63,6 +71,27 @@ const themePalettes: Record<Exclude<BoardTheme, "custom">, BoardPalette> = {
 
 function colorHex(color: Color) {
   return `#${color.getHexString()}`;
+}
+
+function useBoardTextures(palette: BoardPalette) {
+  const textures = useMemo(
+    () => ({
+      wood: makeWoodTexture(palette.board),
+      felt: makeFeltTexture(palette.center),
+      paper: makePaperTexture("#d8cfb9"),
+      noise: makeNoiseMap(),
+    }),
+    [palette.board, palette.center],
+  );
+  useEffect(
+    () => () => {
+      Object.values(textures).forEach((texture: CanvasTexture) =>
+        texture.dispose(),
+      );
+    },
+    [textures],
+  );
+  return textures;
 }
 
 function getThemePalette(
@@ -220,7 +249,8 @@ function Token({
   useEffect(() => {
     target.current = index;
   }, [index]);
-  useFrame((_, delta) => {
+  const glow = useRef<MeshStandardMaterial>(null);
+  useFrame((state, delta) => {
     if (!ref.current) return;
     if (stepProgress.current >= 1 && current.current !== target.current) {
       from.current = boardPosition(current.current, side);
@@ -244,6 +274,10 @@ function Token({
       ref.current.position.z = point[2] + offset;
       ref.current.position.y = 0.86;
     }
+    if (glow.current) {
+      glow.current.emissiveIntensity =
+        0.18 + Math.sin(state.clock.elapsedTime * 3.2 + offset * 8) * 0.08;
+    }
   });
   const initial = boardPosition(index, side);
   return (
@@ -251,17 +285,32 @@ function Token({
       ref={ref}
       position={[initial[0] + offset, 0.86, initial[2] + offset]}
     >
-      <mesh position={[0, 0.21, 0]} castShadow>
+      <mesh position={[0, 0.21, 0]}>
         <sphereGeometry args={[0.12, 24, 24]} />
-        <meshStandardMaterial color={color} roughness={0.48} metalness={0.04} />
+        <meshStandardMaterial
+          ref={glow}
+          color={color}
+          emissive={color}
+          emissiveIntensity={0.2}
+          roughness={0.32}
+          metalness={0.28}
+        />
       </mesh>
-      <mesh castShadow>
+      <mesh>
         <coneGeometry args={[0.21, 0.42, 24]} />
-        <meshStandardMaterial color={color} roughness={0.52} />
+        <meshStandardMaterial color={color} roughness={0.38} metalness={0.22} />
       </mesh>
-      <mesh position={[0, -0.225, 0]} castShadow>
+      <mesh position={[0, -0.225, 0]}>
         <cylinderGeometry args={[0.235, 0.235, 0.075, 24]} />
-        <meshStandardMaterial color="#24212b" roughness={0.58} />
+        <meshStandardMaterial
+          color="#1a1820"
+          roughness={0.48}
+          metalness={0.4}
+        />
+      </mesh>
+      <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry args={[0.22, 0.32, 24]} />
+        <meshBasicMaterial color={color} transparent opacity={0.22} />
       </mesh>
     </group>
   );
@@ -395,16 +444,12 @@ function Die({
   ];
   return (
     <group ref={ref} position={home}>
-      <RoundedBox
-        args={[0.72, 0.72, 0.72]}
-        radius={0.115}
-        smoothness={5}
-        castShadow
-      >
+      <RoundedBox args={[0.72, 0.72, 0.72]} radius={0.115} smoothness={5}>
         <meshStandardMaterial
-          color="#e9e2d2"
-          roughness={0.3}
-          metalness={0.02}
+          color="#efe6d4"
+          roughness={0.22}
+          metalness={0.08}
+          envMapIntensity={0.6}
         />
       </RoundedBox>
       <FacePips value={faces[0]} face="top" />
@@ -469,22 +514,36 @@ function ChanceDeck({
         radius={0.065}
         smoothness={4}
         position={[0, 0.58, 0]}
-        castShadow
       >
-        <meshStandardMaterial color="#e9dfc9" roughness={0.68} />
+        <meshStandardMaterial
+          color="#e9dfc9"
+          roughness={0.55}
+          metalness={0.04}
+        />
       </RoundedBox>
       <RoundedBox
         args={[1.12, 0.055, 1.48]}
         radius={0.06}
         smoothness={4}
         position={[0, 0.72, 0]}
-        castShadow
       >
-        <meshStandardMaterial color={cover} roughness={0.48} />
+        <meshStandardMaterial
+          color={cover}
+          roughness={0.4}
+          metalness={0.12}
+          emissive={cover}
+          emissiveIntensity={0.12}
+        />
       </RoundedBox>
       <mesh position={[0, 0.755, 0]} rotation={[-Math.PI / 2, 0, 0]}>
         <ringGeometry args={[0.25, 0.38, 32]} />
-        <meshStandardMaterial color={accent} roughness={0.42} />
+        <meshStandardMaterial
+          color={accent}
+          roughness={0.32}
+          metalness={0.25}
+          emissive={accent}
+          emissiveIntensity={0.35}
+        />
       </mesh>
       <Text
         position={[0, 0.762, 0.38]}
@@ -502,13 +561,14 @@ function ChanceDeck({
         rotation={[-Math.PI / 2, 0, 0]}
         visible={false}
       >
-        <RoundedBox
-          args={[1.12, 0.045, 1.48]}
-          radius={0.055}
-          smoothness={3}
-          castShadow
-        >
-          <meshStandardMaterial color={accent} roughness={0.46} />
+        <RoundedBox args={[1.12, 0.045, 1.48]} radius={0.055} smoothness={3}>
+          <meshStandardMaterial
+            color={accent}
+            roughness={0.36}
+            metalness={0.18}
+            emissive={accent}
+            emissiveIntensity={0.4}
+          />
         </RoundedBox>
         <Text
           position={[0, 0.04, 0]}
@@ -582,7 +642,9 @@ function BoardModel({
       "#efc63e",
       "#955fc7",
       "#e98a44",
-    ];
+    ],
+    textures = useBoardTextures(palette),
+    [hovered, setHovered] = useState<number | null>(null);
   useEffect(() => {
     const canvas = gl.domElement,
       context = (e: MouseEvent) => e.preventDefault(),
@@ -654,13 +716,13 @@ function BoardModel({
         args={[boardWidth, 0.42, boardWidth]}
         radius={0.18}
         smoothness={4}
-        receiveShadow
-        castShadow
       >
         <meshStandardMaterial
-          color={palette.board}
-          roughness={0.48}
-          metalness={0.12}
+          map={textures.wood}
+          color="#ffffff"
+          roughness={0.42}
+          metalness={0.08}
+          roughnessMap={textures.noise}
         />
       </RoundedBox>
       <RoundedBox
@@ -668,17 +730,71 @@ function BoardModel({
         radius={0.12}
         smoothness={4}
         position={[0, 0.28, 0]}
-        receiveShadow
       >
         <meshStandardMaterial
-          color={palette.center}
-          roughness={0.72}
+          map={textures.felt}
+          color="#ffffff"
+          roughness={0.88}
           metalness={0.02}
         />
       </RoundedBox>
+      <mesh position={[0, 0.39, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <ringGeometry
+          args={[boardWidth * 0.5 - 0.55, boardWidth * 0.5 - 0.38, 64]}
+        />
+        <meshStandardMaterial
+          color="#d4b35a"
+          roughness={0.28}
+          metalness={0.65}
+          emissive="#a8842a"
+          emissiveIntensity={0.15}
+        />
+      </mesh>
+      <group position={[0, 0.42, 0.55]}>
+        <RoundedBox args={[2.4, 0.06, 1.05]} radius={0.08} smoothness={3}>
+          <meshStandardMaterial
+            map={textures.wood}
+            color="#c9a45c"
+            roughness={0.4}
+            metalness={0.2}
+          />
+        </RoundedBox>
+        <Text
+          position={[0, 0.05, -0.12]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.22}
+          color="#1d1830"
+          anchorX="center"
+          anchorY="middle"
+        >
+          КУПИ МІСТО
+        </Text>
+        <Text
+          position={[0, 0.05, 0.22]}
+          rotation={[-Math.PI / 2, 0, 0]}
+          fontSize={0.09}
+          color="#3a3348"
+          anchorX="center"
+          anchorY="middle"
+        >
+          УКРАЇНСЬКА МОНОПОЛІЯ
+        </Text>
+      </group>
+      <Sparkles
+        count={rolling ? 48 : 22}
+        scale={[boardWidth * 0.55, 1.2, boardWidth * 0.55]}
+        size={rolling ? 4.5 : 2.4}
+        speed={rolling ? 1.1 : 0.35}
+        opacity={0.55}
+        color={palette.key}
+        position={[0, 0.95, 0]}
+      />
       {cells.map((cell, index) => {
         const [x, , z] = boardPosition(index, side),
           corner = cell.kind === "corner",
+          isHovered = hovered === index,
+          owned = ownerColor(index),
+          houseCount = houses[String(index)] || 0,
           rotation =
             index <= edge
               ? 0
@@ -698,9 +814,11 @@ function BoardModel({
             }}
             onPointerOver={(event) => {
               event.stopPropagation();
+              setHovered(index);
               gl.domElement.style.cursor = "pointer";
             }}
             onPointerOut={() => {
+              setHovered((current) => (current === index ? null : current));
               gl.domElement.style.cursor = drag.current.active
                 ? "grabbing"
                 : "default";
@@ -710,19 +828,27 @@ function BoardModel({
               args={[corner ? 1.05 : 0.78, 0.12, 1.05]}
               radius={0.035}
               smoothness={2}
-              receiveShadow
-              castShadow
+              scale={isHovered ? 1.035 : 1}
             >
               <meshStandardMaterial
-                color={corner ? cell.color : "#d8cfb9"}
-                roughness={0.72}
-                metalness={0.015}
+                map={corner ? undefined : textures.paper}
+                color={corner ? cell.color : "#ffffff"}
+                roughness={0.62}
+                metalness={0.04}
+                emissive={isHovered ? palette.key : "#000000"}
+                emissiveIntensity={isHovered ? 0.22 : 0}
               />
             </RoundedBox>
             {!corner && (
               <mesh position={[0, 0.085, -0.38]}>
                 <boxGeometry args={[0.76, 0.045, 0.26]} />
-                <meshStandardMaterial color={cell.color} roughness={0.62} />
+                <meshStandardMaterial
+                  color={cell.color}
+                  roughness={0.45}
+                  metalness={0.12}
+                  emissive={cell.color}
+                  emissiveIntensity={0.18}
+                />
               </mesh>
             )}
             <Text
@@ -737,46 +863,91 @@ function BoardModel({
             >
               {cell.name}
             </Text>
-            {ownerColor(index) && (
+            {owned && (
               <group position={[0, 0.19, 0]}>
                 <mesh position={[0, 0, -0.54]}>
                   <boxGeometry args={[corner ? 1.1 : 0.84, 0.055, 0.035]} />
-                  <meshStandardMaterial color={ownerColor(index)!} />
+                  <meshStandardMaterial
+                    color={owned}
+                    emissive={owned}
+                    emissiveIntensity={0.35}
+                    roughness={0.35}
+                    metalness={0.25}
+                  />
                 </mesh>
                 <mesh position={[0, 0, 0.54]}>
                   <boxGeometry args={[corner ? 1.1 : 0.84, 0.055, 0.035]} />
-                  <meshStandardMaterial color={ownerColor(index)!} />
+                  <meshStandardMaterial
+                    color={owned}
+                    emissive={owned}
+                    emissiveIntensity={0.35}
+                    roughness={0.35}
+                    metalness={0.25}
+                  />
                 </mesh>
                 <mesh position={[-(corner ? 0.55 : 0.42), 0, 0]}>
                   <boxGeometry args={[0.035, 0.055, 1.08]} />
-                  <meshStandardMaterial color={ownerColor(index)!} />
+                  <meshStandardMaterial
+                    color={owned}
+                    emissive={owned}
+                    emissiveIntensity={0.35}
+                    roughness={0.35}
+                    metalness={0.25}
+                  />
                 </mesh>
                 <mesh position={[corner ? 0.55 : 0.42, 0, 0]}>
                   <boxGeometry args={[0.035, 0.055, 1.08]} />
-                  <meshStandardMaterial color={ownerColor(index)!} />
+                  <meshStandardMaterial
+                    color={owned}
+                    emissive={owned}
+                    emissiveIntensity={0.35}
+                    roughness={0.35}
+                    metalness={0.25}
+                  />
                 </mesh>
-                {Boolean(houses[String(index)]) && (
-                  <mesh
-                    position={[
-                      0,
-                      0.16 + (houses[String(index)] || 0) * 0.028,
-                      -0.08,
-                    ]}
-                    castShadow
-                  >
-                    <boxGeometry
-                      args={[
-                        0.16 + (houses[String(index)] || 0) * 0.035,
-                        0.18 + (houses[String(index)] || 0) * 0.055,
-                        0.16 + (houses[String(index)] || 0) * 0.025,
-                      ]}
-                    />
-                    <meshStandardMaterial
-                      color={ownerColor(index)!}
-                      roughness={0.58}
-                    />
-                  </mesh>
-                )}
+                {houseCount > 0 &&
+                  Array.from({ length: Math.min(houseCount, 5) }).map(
+                    (_, houseIndex) => {
+                      const hotel = houseCount >= 5 && houseIndex === 0;
+                      const span = Math.min(houseCount, 4);
+                      const xPos = hotel
+                        ? 0
+                        : (houseIndex - (span - 1) / 2) * 0.17;
+                      if (hotel && houseIndex > 0) return null;
+                      return (
+                        <group
+                          key={houseIndex}
+                          position={[
+                            xPos,
+                            hotel ? 0.14 : 0.1,
+                            hotel ? 0 : -0.08,
+                          ]}
+                        >
+                          <mesh>
+                            <boxGeometry
+                              args={
+                                hotel ? [0.28, 0.22, 0.22] : [0.12, 0.12, 0.1]
+                              }
+                            />
+                            <meshStandardMaterial
+                              color={hotel ? "#c93f39" : "#54b87a"}
+                              roughness={0.45}
+                              metalness={0.15}
+                            />
+                          </mesh>
+                          <mesh position={[0, hotel ? 0.14 : 0.09, 0]}>
+                            <coneGeometry
+                              args={hotel ? [0.18, 0.1, 4] : [0.09, 0.08, 4]}
+                            />
+                            <meshStandardMaterial
+                              color={hotel ? "#8a241f" : "#2f7a4a"}
+                              roughness={0.5}
+                            />
+                          </mesh>
+                        </group>
+                      );
+                    },
+                  )}
               </group>
             )}
             {cell.price && (
@@ -853,29 +1024,35 @@ export default function ClassicBoard3D(props: {
     palette = getThemePalette(theme, props.customColor);
   return (
     <Canvas
-      dpr={[1, 1.6]}
+      dpr={[1, 1.75]}
       camera={{ position: camera, fov: 38 }}
       gl={{
         antialias: true,
         alpha: true,
         toneMapping: ACESFilmicToneMapping,
-        toneMappingExposure: 1,
+        toneMappingExposure: 1.05,
         outputColorSpace: SRGBColorSpace,
       }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
-      <ambientLight intensity={0.78} />
-      <hemisphereLight args={[palette.sky, palette.groundLight, 0.42]} />
+      <ambientLight intensity={0.62} />
+      <hemisphereLight args={[palette.sky, palette.groundLight, 0.55]} />
       <directionalLight
         color={palette.key}
         position={[7, 12, 5]}
-        intensity={1.35}
+        intensity={1.45}
       />
       <pointLight
         color={palette.ring}
-        position={[-7, 5, -6]}
-        intensity={4.5}
-        distance={18}
+        position={[-6, 4.5, -5]}
+        intensity={5.5}
+        distance={20}
+      />
+      <pointLight
+        color="#fff4d2"
+        position={[0, 6, 2]}
+        intensity={3.2}
+        distance={16}
       />
       <BoardModel {...props} palette={palette} />
     </Canvas>
