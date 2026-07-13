@@ -6,10 +6,40 @@ import type { BoardSize, Player } from '../api'
 
 export type BoardCell = { name:string; kind:'corner'|'city'|'chance'|'tax'|'station'|'casino'; price?:number; color:string; description?:string }
 export type BoardTheme = 'meadow'|'midnight'|'sunset'
-const themeBackgrounds:Record<BoardTheme,string>={meadow:'#1d6b59',midnight:'#172a55',sunset:'#7d3e47'}
+const themePalettes:Record<BoardTheme,{background:string;fog:string;ground:string;board:string;center:string;sky:string;groundLight:string;key:string;ring:string}>={
+  meadow:{background:'#176657',fog:'#176657',ground:'#123f38',board:'#24212b',center:'#75aa82',sky:'#d8f4df',groundLight:'#14362f',key:'#fff2c2',ring:'#7ce0b6'},
+  midnight:{background:'#172852',fog:'#172852',ground:'#101a36',board:'#171a2a',center:'#46628b',sky:'#b9c8ff',groundLight:'#10162c',key:'#b7d3ff',ring:'#6d8ff0'},
+  sunset:{background:'#7b3f4a',fog:'#7b3f4a',ground:'#452434',board:'#2d202c',center:'#ba735f',sky:'#ffd5ba',groundLight:'#3a1d2c',key:'#ffd0a3',ring:'#ffb36b'},
+}
 const cityNames=['Київ','Львів','Одеса','Харків','Дніпро','Чернівці','Ужгород','Луцьк','Рівне','Житомир','Вінниця','Полтава','Черкаси','Суми','Чернігів','Тернопіль','Івано-Франківськ','Миколаїв','Херсон','Запоріжжя','Кропивницький','Біла Церква','Кременчук','Кам’янець']
 const bands=['#71472f','#71472f','#55aeca','#55aeca','#cf4d83','#cf4d83','#e17132','#e17132','#c93f39','#c93f39','#e5b92f','#e5b92f','#47985c','#47985c','#3565c2','#3565c2']
-export function makeCells(size:BoardSize):BoardCell[]{const side=size==='large'?15:11,total=side*4-4,casinoIndex=(side-1)*3;let city=0;return Array.from({length:total},(_,index)=>{const lane=index%(side-1);if(index===casinoIndex)return{name:'КАЗИНО',description:'Одна спроба: можна виграти від 50 до 150 ₴ або втратити до 150 ₴.',kind:'casino',color:'#9b59b6'};if(lane===0){const corners=[['СТАРТ','Проходиш старт — отримуєш +100 ₴.'],['Я У ПОЛЬЩІ','Доставка через кордон: отримуєш +100 ₴.'],['БУСИФІКАЦІЯ','Міський маршрут приніс +75 ₴.'],['КАЗИНО','Одна спроба: можна виграти від 50 до 150 ₴ або втратити до 150 ₴.']];const [name,description]=corners[index/(side-1)];return{name,description,kind:'corner',color:index===0?'#e8bd32':'#d9e2d1'}}if(lane===3)return{name:'ШАНС',description:'Позитивна картка з бонусом для твого балансу.',kind:'chance',color:'#ded8c7'};if(lane===7)return{name:'ХАЛЕПА',description:'Негативна картка зі штрафом для твого балансу.',kind:'tax',color:'#d8d1bf'};if(lane===5)return{name:'ВОКЗАЛ',description:'Купівля за 200 ₴. Базова оренда — 50 ₴.',kind:'city',price:200,color:'#d8d1bf'};const name=cityNames[city%cityNames.length],color=bands[Math.floor(city/2)%bands.length];city++;return{name,description:'Міська власність. Купуй і отримуй оренду.',kind:'city',price:100+(city%9)*30,color}})}
+export function makeCells(size:BoardSize):BoardCell[]{
+  const side=size==='large'?15:11
+  const total=side*4-4
+  const casinoIndex=(side-1)*3
+  let city=0
+  return Array.from({length:total},(_,index)=>{
+    const lane=index%(side-1)
+    if(index===casinoIndex)return{name:'КАЗИНО',description:'Рівні шанси: −150, −100, −50, +50, +100 або +150 ₴.',kind:'casino',color:'#9b59b6'}
+    if(lane===0){
+      const corners=[
+        ['СТАРТ','Проходиш старт — отримуєш +100 ₴.'],
+        ['Я У ПОЛЬЩІ','Доставка через кордон: отримуєш +100 ₴.'],
+        ['БУСИФІКАЦІЯ','Міський маршрут приніс +75 ₴.'],
+        ['КАЗИНО','Рівні шанси: −150, −100, −50, +50, +100 або +150 ₴.'],
+      ]
+      const [name,description]=corners[index/(side-1)]
+      return{name,description,kind:'corner',color:index===0?'#e8bd32':'#d9e2d1'}
+    }
+    if(lane===3)return{name:'ШАНС',description:'Позитивна картка з бонусом для твого балансу.',kind:'chance',color:'#ded8c7'}
+    if(lane===7)return{name:'ХАЛЕПА',description:'Негативна картка зі штрафом для твого балансу.',kind:'tax',color:'#d8d1bf'}
+    if(lane===5)return{name:'ВОКЗАЛ',description:'Купівля за 200 ₴. Базова оренда — 66 ₴.',kind:'city',price:200,color:'#d8d1bf'}
+    const name=cityNames[city%cityNames.length]
+    const color=bands[Math.floor(city/2)%bands.length]
+    city++
+    return{name,description:'Міська власність. Купуй і отримуй оренду.',kind:'city',price:100+(city%9)*30,color}
+  })
+}
 function boardPosition(index:number,side:number):[number,number,number]{const edge=side-1,half=edge/2;if(index<=edge)return[half-index,0,half];if(index<=edge*2)return[-half,0,half-(index-edge)];if(index<=edge*3)return[-half+(index-edge*2),0,-half];return[half,0,-half+(index-edge*3)]}
 
 function Token({index,side,color,offset}:{index:number;side:number;color:string;offset:number}){
@@ -65,41 +95,68 @@ function Die({home,value,rolling,seed}:{home:[number,number,number];value:number
 }
 
 
-function ChanceDeck({drawNonce,onClick,kind}:{drawNonce:number;onClick:()=>void;kind:'chance'|'bad'}){
+function ChanceDeck({drawNonce,onClick,kind,position}:{drawNonce:number;onClick:()=>void;kind:'chance'|'bad';position:[number,number,number]}){
   const card=useRef<Group>(null)
-  const previous=useRef(drawNonce)
+  const activeNonce=kind==='bad'&&drawNonce<0?-drawNonce:kind==='chance'&&drawNonce>0?drawNonce:0
+  const previous=useRef(activeNonce)
   const progress=useRef(1)
-  useEffect(()=>{if(drawNonce!==previous.current){previous.current=drawNonce;progress.current=0}},[drawNonce])
+  const accent=kind==='chance'?'#e8bd32':'#e46b5f'
+  const cover=kind==='chance'?'#244f95':'#a9323b'
+  useEffect(()=>{if(activeNonce!==0&&activeNonce!==previous.current){previous.current=activeNonce;progress.current=0}},[activeNonce])
   useFrame((_,delta)=>{
     if(!card.current)return
     progress.current=Math.min(1,progress.current+delta*.82)
     const t=1-Math.pow(1-progress.current,4)
-    card.current.position.x=1.55
-    card.current.position.y=.69+Math.sin(t*Math.PI)*.45
-    card.current.position.z=-.45
+    card.current.position.x=t*.5
+    card.current.position.y=.76+Math.sin(t*Math.PI)*.55
+    card.current.position.z=-t*.3
     card.current.rotation.x=-Math.PI/2+t*.45
     card.current.rotation.z=t*Math.PI*.18
     card.current.visible=progress.current<.985
   })
-  return <group onClick={(e)=>{e.stopPropagation();onClick()}}>
-    {Array.from({length:5}).map((_,index)=><RoundedBox key={index} args={[1.12,.045,1.48]} radius={.055} smoothness={3} position={[1.55,.50+index*.045,-.45]} castShadow><meshStandardMaterial color={kind==='chance'?(index%2?'#e8bd32':'#244f95'):(index%2?'#f0d4c6':'#b63832')} roughness={.58}/></RoundedBox>)}
-    <group ref={card} position={[1.55,.69,-.45]} rotation={[-Math.PI/2,0,0]} visible={false}>
-      <RoundedBox args={[1.12,.045,1.48]} radius={.055} smoothness={3} castShadow><meshStandardMaterial color={kind==='chance'?'#e8bd32':'#b63832'} roughness={.46}/></RoundedBox>
+  return <group position={position} onClick={(e)=>{e.stopPropagation();onClick()}}>
+    <RoundedBox args={[1.16,.24,1.52]} radius={.065} smoothness={4} position={[0,.58,0]} castShadow>
+      <meshStandardMaterial color="#e9dfc9" roughness={.68}/>
+    </RoundedBox>
+    <RoundedBox args={[1.12,.055,1.48]} radius={.06} smoothness={4} position={[0,.72,0]} castShadow>
+      <meshStandardMaterial color={cover} roughness={.48}/>
+    </RoundedBox>
+    <mesh position={[0,.755,0]} rotation={[-Math.PI/2,0,0]}>
+      <ringGeometry args={[.25,.38,32]}/>
+      <meshStandardMaterial color={accent} roughness={.42}/>
+    </mesh>
+    <Text position={[0,.762,.38]} rotation={[-Math.PI/2,0,0]} fontSize={.13} maxWidth={.9} color="#f8f1df" textAlign="center">{kind==='chance'?'ШАНС':'ХАЛЕПА'}</Text>
+    <group ref={card} position={[0,.76,0]} rotation={[-Math.PI/2,0,0]} visible={false}>
+      <RoundedBox args={[1.12,.045,1.48]} radius={.055} smoothness={3} castShadow><meshStandardMaterial color={accent} roughness={.46}/></RoundedBox>
       <Text position={[0,.04,0]} rotation={[-Math.PI/2,0,0]} fontSize={.18} maxWidth={.82} color="#20202a" textAlign="center">{kind==='chance'?'ШАНС':'ХАЛЕПА'}</Text>
     </group>
   </group>
 }
 
-function BoardModel({size,positions,players,dice,rolling,onSelectCell,ownership,drawNonce,houses,onChanceDeckClick,onBadDeckClick}:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean;onSelectCell:(index:number)=>void;ownership:Record<string,string>;drawNonce:number;houses:Record<string,number>;onChanceDeckClick:()=>void;onBadDeckClick:()=>void}){
-  const ownerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44'],ownerColor=(index:number)=>{const id=ownership[String(index)];const playerIndex=players.findIndex(player=>player.id===id);return playerIndex>=0?ownerColors[playerIndex%ownerColors.length]:null},group=useRef<Group>(null),drag=useRef({active:false,x:0,y:0,targetX:-.04,targetY:0}),zoom=useRef(size==='large'?18.5:16.2),{gl,camera}=useThree(),cells=useMemo(()=>makeCells(size),[size]),side=size==='large'?15:11,edge=side-1,boardWidth=edge+1.7,playerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44']
+function SceneBackdrop({theme}:{theme:BoardTheme}){
+  const palette=themePalettes[theme]
+  return <group>
+    <mesh position={[0,-.51,0]} rotation={[-Math.PI/2,0,0]} receiveShadow>
+      <circleGeometry args={[34,64]}/>
+      <meshStandardMaterial color={palette.ground} roughness={1}/>
+    </mesh>
+    {[10,14,19].map((radius,index)=><mesh key={radius} position={[0,-.485-index*.002,0]} rotation={[-Math.PI/2,0,0]}>
+      <torusGeometry args={[radius,.025,8,96]}/>
+      <meshBasicMaterial color={palette.ring} transparent opacity={.2-index*.04}/>
+    </mesh>)}
+  </group>
+}
+
+function BoardModel({size,positions,players,dice,rolling,onSelectCell,ownership,drawNonce,houses,onChanceDeckClick,onBadDeckClick,theme}:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean;onSelectCell:(index:number)=>void;ownership:Record<string,string>;drawNonce:number;houses:Record<string,number>;onChanceDeckClick:()=>void;onBadDeckClick:()=>void;theme:BoardTheme}){
+  const palette=themePalettes[theme],ownerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44'],ownerColor=(index:number)=>{const id=ownership[String(index)];const playerIndex=players.findIndex(player=>player.id===id);return playerIndex>=0?ownerColors[playerIndex%ownerColors.length]:null},group=useRef<Group>(null),drag=useRef({active:false,x:0,y:0,targetX:-.04,targetY:0}),zoom=useRef(size==='large'?18.5:16.2),{gl,camera}=useThree(),cells=useMemo(()=>makeCells(size),[size]),side=size==='large'?15:11,edge=side-1,boardWidth=edge+1.7,playerColors=['#3167dc','#de5549','#54b87a','#efc63e','#955fc7','#e98a44']
   useEffect(()=>{const canvas=gl.domElement,context=(e:MouseEvent)=>e.preventDefault(),down=(e:PointerEvent)=>{if(e.button!==2)return;e.preventDefault();drag.current.active=true;drag.current.x=e.clientX;drag.current.y=e.clientY;canvas.setPointerCapture?.(e.pointerId);canvas.classList.add('isRotating')},move=(e:PointerEvent)=>{if(!drag.current.active||(e.buttons&2)!==2)return;const dx=e.clientX-drag.current.x,dy=e.clientY-drag.current.y;drag.current.x=e.clientX;drag.current.y=e.clientY;drag.current.targetY+=dx*.008;drag.current.targetX=Math.max(-.38,Math.min(.32,drag.current.targetX+dy*.005))},up=(e:PointerEvent)=>{if(e.button!==2)return;drag.current.active=false;canvas.releasePointerCapture?.(e.pointerId);canvas.classList.remove('isRotating')},wheel=(e:WheelEvent)=>{e.preventDefault();zoom.current=Math.max(size==='large'?13.5:11.5,Math.min(size==='large'?25:22,zoom.current+e.deltaY*.012))};canvas.addEventListener('contextmenu',context);canvas.addEventListener('pointerdown',down);canvas.addEventListener('pointermove',move);canvas.addEventListener('pointerup',up);canvas.addEventListener('pointercancel',up);canvas.addEventListener('wheel',wheel,{passive:false});return()=>{canvas.removeEventListener('contextmenu',context);canvas.removeEventListener('pointerdown',down);canvas.removeEventListener('pointermove',move);canvas.removeEventListener('pointerup',up);canvas.removeEventListener('pointercancel',up);canvas.removeEventListener('wheel',wheel)}},[gl,size])
   useFrame(()=>{if(group.current){group.current.rotation.y+=(drag.current.targetY-group.current.rotation.y)*.12;group.current.rotation.x+=(drag.current.targetX-group.current.rotation.x)*.12}const cam=camera as PerspectiveCamera;const length=Math.hypot(cam.position.x,cam.position.y,cam.position.z);const target=zoom.current;if(Math.abs(length-target)>.01)cam.position.multiplyScalar((length+(target-length)*.12)/length)})
-  return <group ref={group}><RoundedBox args={[boardWidth,.42,boardWidth]} radius={.18} smoothness={4} receiveShadow><meshStandardMaterial color="#22212b" roughness={.65}/></RoundedBox><RoundedBox args={[boardWidth-.28,.20,boardWidth-.28]} radius={.12} smoothness={4} position={[0,.28,0]} receiveShadow><meshStandardMaterial color="#78a881" roughness={.82} metalness={0}/></RoundedBox>{cells.map((cell,index)=>{const[x,,z]=boardPosition(index,side),corner=cell.kind==='corner',rotation=index<=edge?0:index<=edge*2?-Math.PI/2:index<=edge*3?Math.PI:Math.PI/2;return <group key={index} position={[x,.43,z]} rotation={[0,rotation,0]} onClick={(event)=>{event.stopPropagation();onSelectCell(index)}} onPointerOver={(event)=>{event.stopPropagation();gl.domElement.style.cursor='pointer'}} onPointerOut={()=>{gl.domElement.style.cursor=drag.current.active?'grabbing':'default'}}><RoundedBox args={[corner?1.05:.78,.12,1.05]} radius={.035} smoothness={2} receiveShadow><meshStandardMaterial color={corner?cell.color:'#cfc6af'} roughness={.86} metalness={0}/></RoundedBox>{!corner&&<mesh position={[0,.085,-.38]}><boxGeometry args={[.76,.045,.26]}/><meshStandardMaterial color={cell.color}/></mesh>}<Text position={[0,.112,.02]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>{ownerColor(index)&&<group position={[0,.19,0]}>
+  return <group ref={group}><RoundedBox args={[boardWidth,.42,boardWidth]} radius={.18} smoothness={4} receiveShadow castShadow><meshStandardMaterial color={palette.board} roughness={.48} metalness={.12}/></RoundedBox><RoundedBox args={[boardWidth-.28,.20,boardWidth-.28]} radius={.12} smoothness={4} position={[0,.28,0]} receiveShadow><meshStandardMaterial color={palette.center} roughness={.72} metalness={.02}/></RoundedBox>{cells.map((cell,index)=>{const[x,,z]=boardPosition(index,side),corner=cell.kind==='corner',rotation=index<=edge?0:index<=edge*2?-Math.PI/2:index<=edge*3?Math.PI:Math.PI/2;return <group key={index} position={[x,.43,z]} rotation={[0,rotation,0]} onClick={(event)=>{event.stopPropagation();onSelectCell(index)}} onPointerOver={(event)=>{event.stopPropagation();gl.domElement.style.cursor='pointer'}} onPointerOut={()=>{gl.domElement.style.cursor=drag.current.active?'grabbing':'default'}}><RoundedBox args={[corner?1.05:.78,.12,1.05]} radius={.035} smoothness={2} receiveShadow castShadow><meshStandardMaterial color={corner?cell.color:'#d8cfb9'} roughness={.72} metalness={.015}/></RoundedBox>{!corner&&<mesh position={[0,.085,-.38]}><boxGeometry args={[.76,.045,.26]}/><meshStandardMaterial color={cell.color} roughness={.62}/></mesh>}<Text position={[0,.112,.02]} rotation={[-Math.PI/2,0,0]} fontSize={corner?.12:.09} maxWidth={.68} color="#20202a" textAlign="center" anchorX="center" anchorY="middle">{cell.name}</Text>{ownerColor(index)&&<group position={[0,.19,0]}>
           <mesh position={[0,0,-.54]}><boxGeometry args={[corner?1.1:.84,.055,.035]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           <mesh position={[0,0,.54]}><boxGeometry args={[corner?1.1:.84,.055,.035]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           <mesh position={[-(corner?0.55:0.42),0,0]}><boxGeometry args={[.035,.055,1.08]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           <mesh position={[(corner?0.55:0.42),0,0]}><boxGeometry args={[.035,.055,1.08]}/><meshStandardMaterial color={ownerColor(index)!}/></mesh>
           {Boolean(houses[String(index)])&&<mesh position={[0,.16+(houses[String(index)]||0)*.028,-.08]} castShadow><boxGeometry args={[.16+(houses[String(index)]||0)*.035,.18+(houses[String(index)]||0)*.055,.16+(houses[String(index)]||0)*.025]}/><meshStandardMaterial color={ownerColor(index)!} roughness={.58}/></mesh>}
-        </group>}{cell.price&&<Text position={[0,.113,.29]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<ChanceDeck drawNonce={drawNonce} onClick={onChanceDeckClick} kind="chance"/><group position={[-1.55,.02,-.45]}><ChanceDeck drawNonce={drawNonce} onClick={onBadDeckClick} kind="bad"/></group><Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
+        </group>}{cell.price&&<Text position={[0,.113,.29]} rotation={[-Math.PI/2,0,0]} fontSize={.07} color="#20202a" anchorX="center" anchorY="middle">{cell.price} ₴</Text>}</group>})}{players.map((player,index)=><Token key={player.id} index={positions[index]||0} side={side} color={playerColors[index%playerColors.length]} offset={(index%3-.8)*.16}/>)}<ChanceDeck position={[1.55,.02,-.45]} drawNonce={drawNonce} onClick={onChanceDeckClick} kind="chance"/><ChanceDeck position={[-1.55,.02,-.45]} drawNonce={drawNonce} onClick={onBadDeckClick} kind="bad"/><Die home={[-.5,.86,.45]} value={dice[0]} rolling={rolling} seed={1}/><Die home={[.5,.86,.45]} value={dice[1]} rolling={rolling} seed={2}/></group>
 }
-export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean;onSelectCell:(index:number)=>void;ownership:Record<string,string>;drawNonce:number;houses:Record<string,number>;onChanceDeckClick:()=>void;onBadDeckClick:()=>void;theme?:BoardTheme}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number],theme=props.theme??'meadow';return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true,toneMapping:ACESFilmicToneMapping,toneMappingExposure:.72,outputColorSpace:SRGBColorSpace}}><color attach="background" args={[themeBackgrounds[theme]]}/><ambientLight intensity={.42}/><hemisphereLight args={['#c3d9c5','#263b2d',.72]}/><directionalLight position={[7,12,5]} intensity={1.55} castShadow shadow-mapSize={[1024,1024]}/><BoardModel {...props}/><ContactShadows position={[0,-.24,0]} opacity={.3} scale={20} blur={2.4} far={8}/></Canvas>}
+export default function ClassicBoard3D(props:{size:BoardSize;positions:number[];players:Player[];dice:[number,number];rolling:boolean;onSelectCell:(index:number)=>void;ownership:Record<string,string>;drawNonce:number;houses:Record<string,number>;onChanceDeckClick:()=>void;onBadDeckClick:()=>void;theme?:BoardTheme}){const camera=props.size==='large'?[0,12.5,13.8]as[number,number,number]:[0,10.8,12.5]as[number,number,number],theme=props.theme??'meadow',palette=themePalettes[theme];return <Canvas dpr={[1,1.6]} shadows camera={{position:camera,fov:38}} gl={{antialias:true,toneMapping:ACESFilmicToneMapping,toneMappingExposure:.9,outputColorSpace:SRGBColorSpace}}><color attach="background" args={[palette.background]}/><fog attach="fog" args={[palette.fog,18,42]}/><ambientLight intensity={.52}/><hemisphereLight args={[palette.sky,palette.groundLight,.88]}/><directionalLight color={palette.key} position={[7,12,5]} intensity={1.8} castShadow shadow-mapSize={[2048,2048]}/><pointLight color={palette.ring} position={[-7,5,-6]} intensity={12} distance={22}/><SceneBackdrop theme={theme}/><BoardModel {...props} theme={theme}/><ContactShadows position={[0,-.24,0]} opacity={.38} scale={24} blur={2.6} far={9}/></Canvas>}

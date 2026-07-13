@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { ArrowRight, Check, Copy, DoorOpen, Home, LogOut, Plus, Users, X } from 'lucide-react'
+import { ArrowRight, Check, Copy, DoorOpen, Home, LogOut, Plus, X } from 'lucide-react'
 import { api, clearActiveRoomCode, clearToken, getActiveRoomCode, setActiveRoomCode, type BoardSize, type Room, type User } from '../api'
 import GameScreen from './GameScreen'
 import { playUiSound } from '../audio'
@@ -11,7 +11,6 @@ export default function LobbyScreen({ user, onLogout, onHome }: Props) {
   const [room, setRoom] = useState<Room | null>(null)
   const [roomName, setRoomName] = useState(`${user.name}, місто і компанія`)
   const [maxPlayers, setMaxPlayers] = useState(4)
-  const [boardSize, setBoardSize] = useState<BoardSize>('standard')
   const [gameStarted, setGameStarted] = useState(false)
   const [joinCode, setJoinCode] = useState('')
   const [error, setError] = useState('')

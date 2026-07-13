@@ -20,6 +20,17 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+const (
+	startPassBonus = 100
+	rentDivisor    = 3
+	rentPerHouse   = 50
+	houseBaseCost  = 100
+	houseCostStep  = 50
+	defaultRounds  = 30
+)
+
+var casinoOutcomes = [...]int{-150, -100, -50, 50, 100, 150}
+
 type User struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
@@ -226,7 +237,7 @@ func main() {
 				break
 			}
 		}
-		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, RoundLimit: 30, TurnDeadline: time.Now().Add(60 * time.Second), CreatedAt: time.Now()}
+		room := &Room{Code: code, Name: in.Name, MaxPlayers: in.MaxPlayers, BoardSize: "standard", Ownership: map[string]string{}, Balances: map[string]int{user.ID: 1500}, Trades: []Trade{}, TurnSeconds: 60, DecisionSeconds: 45, Houses: map[string]int{}, Players: []Player{{ID: user.ID, Name: user.Name, Host: true}}, Positions: []int{0}, Dice: [2]int{1, 1}, RoundLimit: defaultRounds, TurnDeadline: time.Now().Add(60 * time.Second), CreatedAt: time.Now()}
 		store.rooms[code] = room
 		writeJSON(w, 201, map[string]any{"room": room})
 	})
@@ -634,7 +645,7 @@ func main() {
 		room.Turn = 0
 		room.Round = 0
 		if room.RoundLimit <= 0 {
-			room.RoundLimit = 30
+			room.RoundLimit = defaultRounds
 		}
 		room.Capital = nil
 		room.WinnerID = ""
@@ -674,7 +685,7 @@ func main() {
 		room.Dice = [2]int{a, b}
 		previousPosition := room.Positions[room.Turn]
 		if previousPosition+a+b >= boardCells {
-			room.Balances[user.ID] += 100
+			room.Balances[user.ID] += startPassBonus
 		}
 		destination := (previousPosition + a + b) % boardCells
 		room.Positions[room.Turn] = destination
@@ -688,7 +699,7 @@ func main() {
 		if ownerID != "" {
 			price, isProperty := propertyPrice(room.BoardSize, destination)
 			if isProperty && ownerID != user.ID {
-				rent = max(price/3+room.Houses[strconv.Itoa(destination)]*50, 25)
+				rent = propertyRent(price, room.Houses[strconv.Itoa(destination)])
 				room.Balances[user.ID] -= rent
 				room.Balances[ownerID] += rent
 				markWinnerIfBankrupt(room, user.ID)
@@ -720,8 +731,7 @@ func main() {
 			fail(w, 409, "Спочатку потрібно стати на казино")
 			return
 		}
-		outcomes := []int{-150, -100, -50, 50, 100, 150}
-		result := outcomes[mathrand.Intn(len(outcomes))]
+		result := casinoOutcomes[mathrand.Intn(len(casinoOutcomes))]
 		if room.Balances == nil {
 			room.Balances = map[string]int{}
 		}
@@ -981,14 +991,18 @@ func propertyGroup(boardSize string, index int) (int, bool) {
 }
 
 func housePrice(existing int) int {
-	return 100 + max(existing, 0)*50
+	return houseBaseCost + max(existing, 0)*houseCostStep
+}
+
+func propertyRent(price, houses int) int {
+	return max(price/rentDivisor+max(houses, 0)*rentPerHouse, 25)
 }
 
 func housesValue(count int) int {
 	if count <= 0 {
 		return 0
 	}
-	return 50 * count * (count + 3) / 2
+	return houseCostStep * count * (count + 3) / 2
 }
 
 func ownsCompletePropertyGroup(room *Room, playerID string, index int) bool {
@@ -1023,7 +1037,7 @@ func advanceTurn(room *Room) {
 	if room.Turn == 0 {
 		room.Round++
 		if room.RoundLimit <= 0 {
-			room.RoundLimit = 30
+			room.RoundLimit = defaultRounds
 		}
 		if room.Round >= room.RoundLimit {
 			finalizeGame(room)
@@ -1037,26 +1051,11 @@ func finalizeGame(room *Room) {
 	if room == nil || room.WinnerID != "" {
 		return
 	}
-	room.Capital = map[string]int{}
+	room.Capital = calculateCapital(room)
 	bestID := ""
 	bestCapital := -1 << 60
 	for _, player := range room.Players {
-		capital := room.Balances[player.ID]
-		for cell, owner := range room.Ownership {
-			if owner != player.ID {
-				continue
-			}
-			index, err := strconv.Atoi(cell)
-			if err != nil {
-				continue
-			}
-			price, property := propertyPrice(room.BoardSize, index)
-			if property {
-				capital += price
-			}
-			capital += housesValue(room.Houses[cell])
-		}
-		room.Capital[player.ID] = capital
+		capital := room.Capital[player.ID]
 		if capital > bestCapital {
 			bestID = player.ID
 			bestCapital = capital
@@ -1067,6 +1066,31 @@ func finalizeGame(room *Room) {
 	}
 	room.DecisionDeadline = nil
 	room.TurnDeadline = time.Time{}
+}
+
+func calculateCapital(room *Room) map[string]int {
+	capitalByPlayer := map[string]int{}
+	if room == nil {
+		return capitalByPlayer
+	}
+	for _, player := range room.Players {
+		capital := room.Balances[player.ID]
+		for cell, owner := range room.Ownership {
+			if owner != player.ID {
+				continue
+			}
+			index, err := strconv.Atoi(cell)
+			if err != nil {
+				continue
+			}
+			if price, property := propertyPrice(room.BoardSize, index); property {
+				capital += price
+			}
+			capital += housesValue(room.Houses[cell])
+		}
+		capitalByPlayer[player.ID] = capital
+	}
+	return capitalByPlayer
 }
 
 func sanitizeRoomProperties(room *Room) {
@@ -1114,6 +1138,7 @@ func markWinnerIfBankrupt(room *Room, bankruptID string) {
 	}
 	if bestID != "" {
 		room.WinnerID = bestID
+		room.Capital = calculateCapital(room)
 		room.DecisionDeadline = nil
 		room.TurnDeadline = time.Time{}
 	}
@@ -1233,6 +1258,7 @@ func removePlayer(room *Room, id string) {
 	}
 	if room.Started && len(room.Players) == 1 {
 		room.WinnerID = room.Players[0].ID
+		room.Capital = calculateCapital(room)
 		room.TurnDeadline = time.Time{}
 		room.DecisionDeadline = nil
 	}

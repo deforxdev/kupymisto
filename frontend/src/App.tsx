@@ -43,7 +43,7 @@ function App() {
   const [sound, setSound] = useState(false)
   const [ageGroup, setAgeGroup] = useState<AgeGroup | null>(null)
   const profile = profiles[ageGroup ?? '14-15']
-  const [buttonState, setButtonState] = useState('Створити кімнату')
+  const buttonState = 'Створити кімнату'
   const [screen, setScreen] = useState<'home' | 'auth' | 'lobby'>('home')
   const [user, setUser] = useState<User | null>(null)
   const reduceMotion = useReducedMotion()

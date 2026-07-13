@@ -66,6 +66,28 @@ export function playUiSound(kind: 'select' | 'click' | 'success' = 'click') {
   oscillator.stop(now + 0.22)
 }
 
+export function playMoneySound(positive: boolean) {
+  const ctx = getContext()
+  const start = ctx.currentTime
+  const frequencies = positive ? [392, 523.25, 659.25, 783.99] : [330, 261.63, 196]
+  frequencies.forEach((frequency, index) => {
+    const oscillator = ctx.createOscillator()
+    const gain = ctx.createGain()
+    const filter = ctx.createBiquadFilter()
+    const time = start + index * 0.075
+    oscillator.type = index % 2 === 0 ? 'triangle' : 'sine'
+    oscillator.frequency.setValueAtTime(frequency, time)
+    filter.type = 'lowpass'
+    filter.frequency.value = positive ? 2200 : 1100
+    gain.gain.setValueAtTime(0.0001, time)
+    gain.gain.exponentialRampToValueAtTime(positive ? 0.11 : 0.085, time + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.16)
+    oscillator.connect(filter).connect(gain).connect(getMasterGain())
+    oscillator.start(time)
+    oscillator.stop(time + 0.18)
+  })
+}
+
 export function startAmbience() {
   if (ambience) return
   const ctx = getContext()
