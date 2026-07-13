@@ -674,7 +674,7 @@ func main() {
 		room.Dice = [2]int{a, b}
 		previousPosition := room.Positions[room.Turn]
 		if previousPosition+a+b >= boardCells {
-			room.Balances[user.ID] += 200
+			room.Balances[user.ID] += 100
 		}
 		destination := (previousPosition + a + b) % boardCells
 		room.Positions[room.Turn] = destination
@@ -688,7 +688,7 @@ func main() {
 		if ownerID != "" {
 			price, isProperty := propertyPrice(room.BoardSize, destination)
 			if isProperty && ownerID != user.ID {
-				rent = max(price/4+room.Houses[strconv.Itoa(destination)]*50, 25)
+				rent = max(price/3+room.Houses[strconv.Itoa(destination)]*50, 25)
 				room.Balances[user.ID] -= rent
 				room.Balances[ownerID] += rent
 				markWinnerIfBankrupt(room, user.ID)
@@ -720,7 +720,7 @@ func main() {
 			fail(w, 409, "Спочатку потрібно стати на казино")
 			return
 		}
-		outcomes := []int{-50, 0, 50, 75, 100, 150}
+		outcomes := []int{-150, -100, -50, 50, 100, 150}
 		result := outcomes[mathrand.Intn(len(outcomes))]
 		if room.Balances == nil {
 			room.Balances = map[string]int{}
@@ -984,6 +984,13 @@ func housePrice(existing int) int {
 	return 100 + max(existing, 0)*50
 }
 
+func housesValue(count int) int {
+	if count <= 0 {
+		return 0
+	}
+	return 50 * count * (count + 3) / 2
+}
+
 func ownsCompletePropertyGroup(room *Room, playerID string, index int) bool {
 	group, ok := propertyGroup(room.BoardSize, index)
 	if !ok {
@@ -1047,7 +1054,7 @@ func finalizeGame(room *Room) {
 			if property {
 				capital += price
 			}
-			capital += room.Houses[cell] * 100
+			capital += housesValue(room.Houses[cell])
 		}
 		room.Capital[player.ID] = capital
 		if capital > bestCapital {
