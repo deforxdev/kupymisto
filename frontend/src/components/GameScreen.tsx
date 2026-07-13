@@ -191,7 +191,9 @@ export default function GameScreen({ room, user, onExit }: Props) {
   }, [room.code, players.length]);
   useEffect(() => {
     const deadline =
-      phase === "decision" ? liveRoom.decisionDeadline : liveRoom.turnDeadline;
+      phase === "decision" || phase === "moving"
+        ? liveRoom.decisionDeadline || liveRoom.turnDeadline
+        : liveRoom.turnDeadline;
     if (!deadline) return;
     const syncTime = () =>
       setTimeLeft(
@@ -202,10 +204,14 @@ export default function GameScreen({ room, user, onExit }: Props) {
     return () => window.clearInterval(timer);
   }, [phase, liveRoom.turnDeadline, liveRoom.decisionDeadline]);
   useEffect(() => {
-    if (phase !== "roll" && phase !== "decision") return;
+    if (phase !== "roll" && phase !== "decision" && phase !== "moving") return;
     if (players[turn]?.id !== user.id) return;
+    if (phase === "moving" && !liveRoom.decisionDeadline) return;
     if (
-      phase === "decision" ? liveRoom.decisionDeadline : liveRoom.turnDeadline
+      (phase === "decision" || phase === "moving"
+        ? liveRoom.decisionDeadline
+        : liveRoom.turnDeadline) &&
+      timeLeft > 0
     )
       return;
     if (timeLeft <= 0) {
@@ -214,7 +220,7 @@ export default function GameScreen({ room, user, onExit }: Props) {
     }
     const t = setTimeout(() => setTimeLeft((v) => v - 1), 1000);
     return () => clearTimeout(t);
-  }, [timeLeft, phase]);
+  }, [timeLeft, phase, liveRoom.decisionDeadline]);
   const roll = async () => {
     if (
       liveRoom.winnerId ||
@@ -238,34 +244,32 @@ export default function GameScreen({ room, user, onExit }: Props) {
       setDice(nextDice);
       setPositions(nextRoom.positions);
       setRolling(false);
+      const steps = nextDice[0] + nextDice[1];
+      // Token advances at ~5.25 steps/sec — settle rent only after the last hop.
+      const landMs = Math.ceil((steps / 5.25) * 1000) + 120;
+      playPawnMove(steps);
       setTimeout(() => {
-        playPawnMove(nextDice[0] + nextDice[1]);
         setSelected(nextPosition);
-        setTimeout(
-          () => {
-            const landed = cells[nextPosition];
-            if (autoFinished) {
-              setPhase("roll");
-              setTimeLeft(nextRoom.turnSeconds || 60);
-            } else if (landed.kind === "city") {
-              const decision = nextRoom.decisionSeconds || 45;
-              setPropertyOpen(true);
-              setTimeLeft(decision);
-              setPhase("decision");
-            } else if (landed.kind === "chance") {
-              setPendingDeck("chance");
-              setPhase("card");
-            } else if (landed.kind === "tax") {
-              setPendingDeck("bad");
-              setPhase("card");
-            } else if (landed.kind === "casino") {
-              setCasinoOpen(true);
-              setPhase("card");
-            } else finishTurn();
-          },
-          (nextDice[0] + nextDice[1]) * 190 + 250,
-        );
-      }, 1000);
+        const landed = cells[nextPosition];
+        if (autoFinished) {
+          // Owned property: charge rent and pass turn only after the pawn lands.
+          finishTurn();
+        } else if (landed.kind === "city") {
+          const decision = nextRoom.decisionSeconds || 45;
+          setPropertyOpen(true);
+          setTimeLeft(decision);
+          setPhase("decision");
+        } else if (landed.kind === "chance") {
+          setPendingDeck("chance");
+          setPhase("card");
+        } else if (landed.kind === "tax") {
+          setPendingDeck("bad");
+          setPhase("card");
+        } else if (landed.kind === "casino") {
+          setCasinoOpen(true);
+          setPhase("card");
+        } else finishTurn();
+      }, landMs);
     } catch (cause) {
       setRolling(false);
       setPhase("roll");

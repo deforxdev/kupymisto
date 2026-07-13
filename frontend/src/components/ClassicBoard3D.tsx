@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { ContactShadows, RoundedBox, Text } from "@react-three/drei";
+import { RoundedBox, Text } from "@react-three/drei";
 import { useEffect, useMemo, useRef } from "react";
 import {
   ACESFilmicToneMapping,
@@ -854,40 +854,30 @@ export default function ClassicBoard3D(props: {
   return (
     <Canvas
       dpr={[1, 1.6]}
-      shadows
       camera={{ position: camera, fov: 38 }}
       gl={{
         antialias: true,
         alpha: true,
         toneMapping: ACESFilmicToneMapping,
-        toneMappingExposure: 0.9,
+        toneMappingExposure: 1,
         outputColorSpace: SRGBColorSpace,
       }}
       onCreated={({ gl }) => gl.setClearColor(0x000000, 0)}
     >
-      <ambientLight intensity={0.52} />
-      <hemisphereLight args={[palette.sky, palette.groundLight, 0.88]} />
+      <ambientLight intensity={0.78} />
+      <hemisphereLight args={[palette.sky, palette.groundLight, 0.42]} />
       <directionalLight
         color={palette.key}
         position={[7, 12, 5]}
-        intensity={1.8}
-        castShadow
-        shadow-mapSize={[2048, 2048]}
+        intensity={1.35}
       />
       <pointLight
         color={palette.ring}
         position={[-7, 5, -6]}
-        intensity={12}
-        distance={22}
+        intensity={4.5}
+        distance={18}
       />
       <BoardModel {...props} palette={palette} />
-      <ContactShadows
-        position={[0, -0.24, 0]}
-        opacity={0.38}
-        scale={24}
-        blur={2.6}
-        far={9}
-      />
     </Canvas>
   );
 }

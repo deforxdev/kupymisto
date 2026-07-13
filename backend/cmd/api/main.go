@@ -88,6 +88,8 @@ type Room struct {
 	Round            int               `json:"round"`
 	RoundLimit       int               `json:"roundLimit"`
 	Capital          map[string]int    `json:"capital,omitempty"`
+	PendingRent      int               `json:"pendingRent,omitempty"`
+	PendingRentTo    string            `json:"pendingRentTo,omitempty"`
 	CreatedAt        time.Time         `json:"createdAt"`
 }
 type Store struct {
@@ -649,6 +651,8 @@ func main() {
 		}
 		room.Capital = nil
 		room.WinnerID = ""
+		room.PendingRent = 0
+		room.PendingRentTo = ""
 		room.TurnDeadline = time.Now().Add(time.Duration(room.TurnSeconds) * time.Second)
 		room.DecisionDeadline = nil
 		writeJSON(w, 200, map[string]any{"room": room})
@@ -695,17 +699,20 @@ func main() {
 		rent := 0
 		autoFinished := false
 		room.DecisionDeadline = nil
+		room.PendingRent = 0
+		room.PendingRentTo = ""
 		ownerID := room.Ownership[strconv.Itoa(destination)]
 		if ownerID != "" {
 			price, isProperty := propertyPrice(room.BoardSize, destination)
 			if isProperty && ownerID != user.ID {
 				rent = propertyRent(price, room.Houses[strconv.Itoa(destination)])
-				room.Balances[user.ID] -= rent
-				room.Balances[ownerID] += rent
-				markWinnerIfBankrupt(room, user.ID)
+				room.PendingRent = rent
+				room.PendingRentTo = ownerID
 			}
+			// Rent and turn change wait until the pawn finishes moving on the client.
 			autoFinished = true
-			advanceTurn(room)
+			deadline := time.Now().Add(time.Duration(max(room.DecisionSeconds, 20)) * time.Second)
+			room.DecisionDeadline = &deadline
 		} else if _, isProperty := propertyPrice(room.BoardSize, destination); isProperty {
 			deadline := time.Now().Add(time.Duration(room.DecisionSeconds) * time.Second)
 			room.DecisionDeadline = &deadline
@@ -754,6 +761,7 @@ func main() {
 			fail(w, 409, "Зараз не твій хід")
 			return
 		}
+		settlePendingRent(room, user.ID)
 		advanceTurn(room)
 		room.DecisionDeadline = nil
 		writeJSON(w, 200, map[string]any{"room": room})
@@ -996,6 +1004,24 @@ func housePrice(existing int) int {
 
 func propertyRent(price, houses int) int {
 	return max(price/rentDivisor+max(houses, 0)*rentPerHouse, 25)
+}
+
+func settlePendingRent(room *Room, payerID string) {
+	if room == nil || room.PendingRent <= 0 || room.PendingRentTo == "" {
+		if room != nil {
+			room.PendingRent = 0
+			room.PendingRentTo = ""
+		}
+		return
+	}
+	if room.Balances == nil {
+		room.Balances = map[string]int{}
+	}
+	room.Balances[payerID] -= room.PendingRent
+	room.Balances[room.PendingRentTo] += room.PendingRent
+	markWinnerIfBankrupt(room, payerID)
+	room.PendingRent = 0
+	room.PendingRentTo = ""
 }
 
 func housesValue(count int) int {

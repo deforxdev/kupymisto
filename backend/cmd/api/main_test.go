@@ -91,3 +91,21 @@ func TestBankruptcyWinnerStillGetsCapitalBreakdown(t *testing.T) {
 		t.Fatalf("winner capital = %d, want %d", got, wantCapital)
 	}
 }
+
+func TestSettlePendingRent(t *testing.T) {
+	room := &Room{
+		Balances:      map[string]int{"payer": 500, "owner": 200},
+		PendingRent:   75,
+		PendingRentTo: "owner",
+	}
+	settlePendingRent(room, "payer")
+	if room.Balances["payer"] != 425 {
+		t.Fatalf("payer balance = %d, want 425", room.Balances["payer"])
+	}
+	if room.Balances["owner"] != 275 {
+		t.Fatalf("owner balance = %d, want 275", room.Balances["owner"])
+	}
+	if room.PendingRent != 0 || room.PendingRentTo != "" {
+		t.Fatalf("pending rent not cleared: %d %q", room.PendingRent, room.PendingRentTo)
+	}
+}
